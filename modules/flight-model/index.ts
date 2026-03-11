@@ -7,3 +7,4 @@
 export * from "./types";
 export * from "./state";
 export * from "./simulate";
+export * from "./tuning";

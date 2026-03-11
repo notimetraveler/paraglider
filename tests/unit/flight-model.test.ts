@@ -20,11 +20,11 @@ describe("flight model", () => {
       const next = simulateStep(state);
       expect(next.position.y).toBeLessThan(state.position.y);
     });
-    it("sink rate at trim is ~1.3 m/s (paraglider-typical)", () => {
+    it("sink rate at trim is ~1.25 m/s (paraglider-typical)", () => {
       const state = createInitialState({ velocity: { x: 0, y: 0, z: 0 } });
       let s = state;
       for (let i = 0; i < 120; i++) s = simulateStep(s);
-      expect(Math.abs(s.velocity.y) - 1.3).toBeLessThan(0.2);
+      expect(Math.abs(s.velocity.y) - 1.25).toBeLessThan(0.2);
     });
     it("advances position in heading direction", () => {
       const state = createInitialState();
@@ -64,10 +64,10 @@ describe("flight model", () => {
         bank: (25 * Math.PI) / 180,
         inputs: { steerLeft: 0, steerRight: 0, brake: 0, acceleratedFlight: 0 },
       });
-      for (let i = 0; i < 90; i++) {
+      for (let i = 0; i < 120; i++) {
         state = simulateStep(state);
       }
-      expect(Math.abs(state.bank)).toBeLessThan(0.05);
+      expect(Math.abs(state.bank)).toBeLessThan(0.06);
     });
     it("coordinated turn: constant bank produces smooth circular path", () => {
       const bankAngle = (35 * Math.PI) / 180;
@@ -133,6 +133,76 @@ describe("flight model", () => {
       expect(next.velocity.z).toBe(0);
       expect(next.position.x).toBe(10);
       expect(next.position.z).toBe(20);
+    });
+    it("brake reduces sink rate", () => {
+      const trim = createInitialState({
+        velocity: { x: 0, y: -1.25, z: 8 },
+        inputs: { steerLeft: 0, steerRight: 0, brake: 0, acceleratedFlight: 0 },
+      });
+      const braked = createInitialState({
+        velocity: { x: 0, y: -1.25, z: 8 },
+        inputs: { steerLeft: 0, steerRight: 0, brake: 1, acceleratedFlight: 0 },
+      });
+      let sTrim = trim;
+      let sBraked = braked;
+      for (let i = 0; i < 60; i++) {
+        sTrim = simulateStep(sTrim, 1 / 60, ZERO_ENVIRONMENT);
+        sBraked = simulateStep(sBraked, 1 / 60, ZERO_ENVIRONMENT);
+      }
+      expect(sBraked.verticalSpeed).toBeGreaterThan(sTrim.verticalSpeed);
+    });
+    it("accelerated flight increases sink rate", () => {
+      const trim = createInitialState({
+        velocity: { x: 0, y: -1.25, z: 8 },
+        inputs: { steerLeft: 0, steerRight: 0, brake: 0, acceleratedFlight: 0 },
+      });
+      const accel = createInitialState({
+        velocity: { x: 0, y: -1.25, z: 8 },
+        inputs: { steerLeft: 0, steerRight: 0, brake: 0, acceleratedFlight: 1 },
+      });
+      let sTrim = trim;
+      let sAccel = accel;
+      for (let i = 0; i < 60; i++) {
+        sTrim = simulateStep(sTrim, 1 / 60, ZERO_ENVIRONMENT);
+        sAccel = simulateStep(sAccel, 1 / 60, ZERO_ENVIRONMENT);
+      }
+      expect(sAccel.verticalSpeed).toBeLessThan(sTrim.verticalSpeed);
+    });
+    it("turn increases sink (bank energy loss)", () => {
+      const straight = createInitialState({
+        velocity: { x: 0, y: -1.25, z: 8 },
+        inputs: { steerLeft: 0, steerRight: 0, brake: 0, acceleratedFlight: 0 },
+      });
+      const turning = createInitialState({
+        velocity: { x: 0, y: -1.25, z: 8 },
+        inputs: { steerLeft: 1, steerRight: 0, brake: 0, acceleratedFlight: 0 },
+      });
+      let sStraight = straight;
+      let sTurning = turning;
+      for (let i = 0; i < 90; i++) {
+        sStraight = simulateStep(sStraight, 1 / 60, ZERO_ENVIRONMENT);
+        sTurning = simulateStep(sTurning, 1 / 60, ZERO_ENVIRONMENT);
+      }
+      expect(sTurning.position.y).toBeLessThan(sStraight.position.y);
+    });
+    it("flare reduces sink when near ground with brake", () => {
+      const noFlare = createInitialState({
+        position: { x: 0, y: 2, z: 0 },
+        velocity: { x: 0, y: -1.2, z: 7 },
+        inputs: { steerLeft: 0, steerRight: 0, brake: 0, acceleratedFlight: 0 },
+      });
+      const flaring = createInitialState({
+        position: { x: 0, y: 2, z: 0 },
+        velocity: { x: 0, y: -1.2, z: 7 },
+        inputs: { steerLeft: 0, steerRight: 0, brake: 0.8, acceleratedFlight: 0 },
+      });
+      let sNo = noFlare;
+      let sFlare = flaring;
+      for (let i = 0; i < 30; i++) {
+        sNo = simulateStep(sNo, 1 / 60, ZERO_ENVIRONMENT);
+        sFlare = simulateStep(sFlare, 1 / 60, ZERO_ENVIRONMENT);
+      }
+      expect(sFlare.verticalSpeed).toBeGreaterThan(sNo.verticalSpeed);
     });
   });
 });

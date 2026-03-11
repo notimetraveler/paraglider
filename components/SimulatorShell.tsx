@@ -17,7 +17,12 @@ import { deriveFlightState, didJustLand } from "@/modules/game-session";
 import type { FlightState } from "@/modules/flight-model/types";
 import type { ControlInputs } from "@/modules/input";
 import { mapAircraftToHudData, mapInputsToDebug } from "@/modules/hud";
-import type { HudData, HudInputDebug, HudEnvDebug } from "@/modules/hud";
+import type {
+  HudData,
+  HudInputDebug,
+  HudEnvDebug,
+  HudTuningDebug,
+} from "@/modules/hud";
 import { DEFAULT_ENVIRONMENT, LAUNCH_CONFIG } from "@/modules/world/config";
 import {
   formatAirtime,
@@ -25,6 +30,13 @@ import {
   type SessionStats,
 } from "@/modules/scoring";
 import { getThermalLift } from "@/modules/world/lift";
+import {
+  SINK_AT_TRIM,
+  FLARE_ALTITUDE,
+  BRAKE_ACCEL_RAMP_RATE,
+  STEER_RAMP_UP,
+  STEER_RAMP_DOWN,
+} from "@/modules/flight-model/tuning";
 import { createVariometer } from "@/modules/audio";
 import { useInput } from "./InputManager";
 import { Hud } from "./Hud";
@@ -35,8 +47,8 @@ const MAX_HEAD_PITCH = (60 * Math.PI) / 180;
 /** Look ramp: smooth like steer keys */
 const LOOK_RAMP_UP = 0.45;
 const LOOK_RAMP_DOWN = 0.35;
-/** HUD update rate - throttle React re-renders */
-const HUD_UPDATE_INTERVAL_MS = 66;
+/** HUD update rate - snelle thermiek-indicator respons */
+const HUD_UPDATE_INTERVAL_MS = 50;
 
 /**
  * Simulator shell - FPV-first 3D render container.
@@ -69,6 +81,7 @@ export function SimulatorShell() {
   );
   const [hudInputDebug, setHudInputDebug] = useState<HudInputDebug | null>(null);
   const [hudEnvDebug, setHudEnvDebug] = useState<HudEnvDebug | null>(null);
+  const [hudTuningDebug, setHudTuningDebug] = useState<HudTuningDebug | null>(null);
   const [flightState, setFlightState] = useState<FlightState>("airborne");
   const [isPaused, setIsPaused] = useState(false);
   const [cameraMode, setCameraMode] = useState<"fpv" | "tpv">("fpv");
@@ -120,11 +133,6 @@ export function SimulatorShell() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-
-  const BRAKE_ACCEL_RATE = 0.8;
-  /** Steer ramp: sneller opbouwen voor natuurlijker cirkelen in thermiek */
-  const STEER_RAMP_UP = 0.7;
-  const STEER_RAMP_DOWN = 0.5;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -178,14 +186,14 @@ export function SimulatorShell() {
       headLookRef.current = { yaw: headYaw, pitch: headPitch };
 
       if (raw.brake > 0) {
-        brakeLevel = Math.min(1, brakeLevel + BRAKE_ACCEL_RATE * SIM_DT);
+        brakeLevel = Math.min(1, brakeLevel + BRAKE_ACCEL_RAMP_RATE * SIM_DT);
         accelLevel = 0;
       } else if (raw.acceleratedFlight > 0) {
-        accelLevel = Math.min(1, accelLevel + BRAKE_ACCEL_RATE * SIM_DT);
+        accelLevel = Math.min(1, accelLevel + BRAKE_ACCEL_RAMP_RATE * SIM_DT);
         brakeLevel = 0;
       } else {
-        brakeLevel = Math.max(0, brakeLevel - BRAKE_ACCEL_RATE * SIM_DT);
-        accelLevel = Math.max(0, accelLevel - BRAKE_ACCEL_RATE * SIM_DT);
+        brakeLevel = Math.max(0, brakeLevel - BRAKE_ACCEL_RAMP_RATE * SIM_DT);
+        accelLevel = Math.max(0, accelLevel - BRAKE_ACCEL_RAMP_RATE * SIM_DT);
       }
       brakeLevelRef.current = brakeLevel;
       accelLevelRef.current = accelLevel;
@@ -294,6 +302,17 @@ export function SimulatorShell() {
               }
             : null
         );
+        setHudTuningDebug(
+          debugModeRef.current
+            ? {
+                sinkTrim: SINK_AT_TRIM,
+                bankDeg: (nextState.bank * 180) / Math.PI,
+                inFlareZone:
+                  nextState.position.y <= FLARE_ALTITUDE &&
+                  nextState.position.y > 0,
+              }
+            : null
+        );
       }
     }
     animate();
@@ -325,6 +344,7 @@ export function SimulatorShell() {
         data={hudData}
         inputDebug={hudInputDebug}
         envDebug={hudEnvDebug}
+        tuningDebug={hudTuningDebug}
         debugMode={debugMode}
         isPaused={isPaused}
       />

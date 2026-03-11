@@ -9,12 +9,14 @@ import {
   type HudData,
   type HudInputDebug,
   type HudEnvDebug,
+  type HudTuningDebug,
 } from "@/modules/hud";
 
 interface HudProps {
   data: HudData;
   inputDebug?: HudInputDebug | null;
   envDebug?: HudEnvDebug | null;
+  tuningDebug?: HudTuningDebug | null;
   debugMode?: boolean;
   isPaused?: boolean;
 }
@@ -28,11 +30,13 @@ export function Hud({
   data,
   inputDebug,
   envDebug,
+  tuningDebug,
   debugMode,
   isPaused = false,
 }: HudProps) {
   const showInputDebug = debugMode && inputDebug;
   const showEnvDebug = debugMode && envDebug;
+  const showTuningDebug = debugMode && tuningDebug;
 
   const inThermal = data.thermalLift > 0.05;
   const thermalStrength = Math.min(1, data.thermalLift / 2);
@@ -121,8 +125,8 @@ export function Hud({
         </div>
       </div>
 
-      {/* Debug: input + env - small, subtle, bottom-right */}
-      {(showInputDebug || showEnvDebug) && (
+      {/* Debug: input + env + tuning - ?debug=1 */}
+      {(showInputDebug || showEnvDebug || showTuningDebug) && (
         <div
           className="absolute bottom-8 right-6 flex flex-col gap-1 rounded bg-black/30 px-2 py-1 font-mono text-[10px] text-white/60"
           data-testid="hud-debug"
@@ -139,6 +143,13 @@ export function Hud({
             <span data-testid="hud-env-debug">
               W {envDebug.windX.toFixed(1)} {envDebug.windZ.toFixed(1)} | L
               {envDebug.thermalLift.toFixed(1)}
+            </span>
+          )}
+          {showTuningDebug && (
+            <span data-testid="hud-tuning-debug">
+              Sink {tuningDebug.sinkTrim.toFixed(1)} | Bank{" "}
+              {tuningDebug.bankDeg.toFixed(0)}° |{" "}
+              {tuningDebug.inFlareZone ? "FLARE" : "—"}
             </span>
           )}
         </div>

@@ -26,3 +26,10 @@ export interface HudEnvDebug {
   windZ: number;
   thermalLift: number;
 }
+
+/** Tuning debug - key flight params for realism verification */
+export interface HudTuningDebug {
+  sinkTrim: number;
+  bankDeg: number;
+  inFlareZone: boolean;
+}

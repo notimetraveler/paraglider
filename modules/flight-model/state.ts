@@ -1,8 +1,6 @@
 import type { Vec3, PilotInputs } from "./types";
-import {
-  LAUNCH_CONFIG,
-  GROUND_LEVEL,
-} from "@/modules/world/config";
+import { LAUNCH_CONFIG, GROUND_LEVEL } from "@/modules/world/config";
+import { SINK_AT_TRIM } from "./tuning";
 
 /** Full aircraft simulation state */
 export interface AircraftState {
@@ -23,9 +21,6 @@ export interface AircraftState {
   /** Pilot inputs applied this frame */
   inputs: PilotInputs;
 }
-
-/** Sink rate at trim (m/s) - for initial velocity setup */
-const SINK_AT_TRIM = 1.3;
 
 /** Create initial aircraft state at spawn (launch position) */
 export function createInitialAircraftState(
