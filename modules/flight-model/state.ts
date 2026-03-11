@@ -20,6 +20,8 @@ export interface AircraftState {
   turnRate: number;
   /** Pilot inputs applied this frame */
   inputs: PilotInputs;
+  /** Sink rate at touchdown (m/s, positive = downward) - set only on landing frame */
+  touchdownSink?: number;
 }
 
 /** Create initial aircraft state at spawn (launch position) */

@@ -20,8 +20,23 @@ export interface ThermalZone {
   strength: number;
 }
 
+/** Ridge lift zone - line segment, lift when wind blows toward ridge */
+export interface RidgeLiftZone {
+  /** Start of ridge line (m) */
+  x1: number;
+  z1: number;
+  /** End of ridge line (m) */
+  x2: number;
+  z2: number;
+  /** Width perpendicular to ridge (m) - how far from line lift applies */
+  width: number;
+  /** Max lift (m/s) when wind is perpendicular and at full strength */
+  strength: number;
+}
+
 /** Environment state - wind and lift zones */
 export interface Environment {
   wind: WindVector;
   thermals: ThermalZone[];
+  ridgeLift: RidgeLiftZone[];
 }

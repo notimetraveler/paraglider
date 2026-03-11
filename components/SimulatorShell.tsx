@@ -13,7 +13,11 @@ import {
   simulateStep,
   type AircraftState,
 } from "@/modules/flight-model";
-import { deriveFlightState, didJustLand } from "@/modules/game-session";
+import {
+  deriveFlightState,
+  didJustLand,
+  classifyLandingQuality,
+} from "@/modules/game-session";
 import type { FlightState } from "@/modules/flight-model/types";
 import type { ControlInputs } from "@/modules/input";
 import { mapAircraftToHudData, mapInputsToDebug } from "@/modules/hud";
@@ -29,7 +33,7 @@ import {
   formatDistance,
   type SessionStats,
 } from "@/modules/scoring";
-import { getThermalLift } from "@/modules/world/lift";
+import { getThermalLift, getRidgeLift } from "@/modules/world/lift";
 import {
   SINK_AT_TRIM,
   FLARE_ALTITUDE,
@@ -269,10 +273,12 @@ export function SimulatorShell() {
       }
       if (didJustLand(currentState, nextState)) {
         const airtime = (performance.now() - launchTimeRef.current) / 1000;
+        const sink = nextState.touchdownSink ?? 2;
         setScoreSummary({
           airtimeSeconds: airtime,
           maxAltitude: maxAltitudeRef.current,
           distanceFromLaunch: maxDistanceRef.current,
+          landingQuality: classifyLandingQuality(sink),
         });
       }
 
@@ -296,11 +302,18 @@ export function SimulatorShell() {
             ? {
                 windX: DEFAULT_ENVIRONMENT.wind.x,
                 windZ: DEFAULT_ENVIRONMENT.wind.z,
-                thermalLift: getThermalLift(
-                  nextState.position.x,
-                  nextState.position.z,
-                  DEFAULT_ENVIRONMENT.thermals
-                ),
+                thermalLift:
+                  getThermalLift(
+                    nextState.position.x,
+                    nextState.position.z,
+                    DEFAULT_ENVIRONMENT.thermals
+                  ) +
+                  getRidgeLift(
+                    nextState.position.x,
+                    nextState.position.z,
+                    DEFAULT_ENVIRONMENT.ridgeLift,
+                    DEFAULT_ENVIRONMENT.wind
+                  ),
               }
             : null
         );
@@ -415,6 +428,23 @@ export function SimulatorShell() {
               className="mb-4 flex flex-col gap-1 rounded bg-black/40 px-6 py-3 font-mono text-sm text-white/90"
               data-testid="landing-summary"
             >
+              {scoreSummary.landingQuality && (
+                <span
+                  className={
+                    scoreSummary.landingQuality === "smooth"
+                      ? "text-emerald-400"
+                      : scoreSummary.landingQuality === "hard"
+                        ? "text-amber-400"
+                        : "text-red-400"
+                  }
+                >
+                  {scoreSummary.landingQuality === "smooth"
+                    ? "Nette landing"
+                    : scoreSummary.landingQuality === "hard"
+                      ? "Harde landing"
+                      : "Zware landing"}
+                </span>
+              )}
               <span>Vluchttijd: {formatAirtime(scoreSummary.airtimeSeconds)}</span>
               <span>Grootste hoogte: {Math.round(scoreSummary.maxAltitude)} m</span>
               <span>Afstand: {formatDistance(scoreSummary.distanceFromLaunch)}</span>

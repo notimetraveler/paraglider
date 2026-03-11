@@ -4,7 +4,7 @@ import {
   LANDED_ALTITUDE_THRESHOLD,
   LANDED_SPEED_THRESHOLD,
 } from "@/modules/world/config";
-import { getThermalLift } from "@/modules/world/lift";
+import { getThermalLift, getRidgeLift } from "@/modules/world/lift";
 import type { Environment } from "@/modules/world/types";
 import type { HudData, HudInputDebug } from "./types";
 
@@ -25,6 +25,12 @@ export function mapAircraftToHudData(
     state.position.z,
     env.thermals
   );
+  const ridgeLift = getRidgeLift(
+    state.position.x,
+    state.position.z,
+    env.ridgeLift,
+    env.wind
+  );
 
   return {
     airspeed: state.airspeed,
@@ -34,7 +40,7 @@ export function mapAircraftToHudData(
     state: sessionState,
     windX: env.wind.x,
     windZ: env.wind.z,
-    thermalLift,
+    thermalLift: thermalLift + ridgeLift,
   };
 }
 

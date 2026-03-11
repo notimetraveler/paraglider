@@ -1,7 +1,7 @@
 import type { AircraftState } from "./state";
 import { GROUND_LEVEL, DEFAULT_ENVIRONMENT } from "@/modules/world/config";
 import type { Environment } from "@/modules/world/types";
-import { getThermalLift } from "@/modules/world/lift";
+import { getThermalLift, getRidgeLift } from "@/modules/world/lift";
 import {
   SIM_DT,
   TRIM_SPEED,
@@ -101,9 +101,9 @@ export function simulateStep(
   const nextX = position.x + dx;
   const nextZ = position.z + dz;
 
-  // Sample thermiek op positie waar we naartoe vliegen - directe respons bij binnenkomen
   const thermalLift = getThermalLift(nextX, nextZ, env.thermals);
-  const targetVelY = -sinkRate + thermalLift;
+  const ridgeLift = getRidgeLift(nextX, nextZ, env.ridgeLift, env.wind);
+  const targetVelY = -sinkRate + thermalLift + ridgeLift;
 
   const blend = Math.min(1, dt * VERTICAL_SPEED_BLEND_RATE);
   let newVelY = velocity.y + (targetVelY - velocity.y) * blend;
@@ -113,7 +113,9 @@ export function simulateStep(
   let newVelX = airVelX + env.wind.x;
   let newVelZ = airVelZ + env.wind.z;
 
+  let touchdownSink: number | undefined;
   if (newY < GROUND_LEVEL) {
+    touchdownSink = Math.max(0, -newVelY);
     newY = GROUND_LEVEL;
     newVelY = 0;
     newVelX = 0;
@@ -124,6 +126,7 @@ export function simulateStep(
 
   return {
     ...state,
+    touchdownSink,
     bank: newBank,
     pitchAttitude: newPitchAttitude,
     position: { x: newX, y: newY, z: newZ },
@@ -133,5 +136,6 @@ export function simulateStep(
     airspeed:
       newVelY === 0 && newVelX === 0 && newVelZ === 0 ? 0 : forwardSpeed,
     verticalSpeed: newVelY,
+    ...(touchdownSink !== undefined && { touchdownSink }),
   };
 }

@@ -40,6 +40,7 @@ export function Hud({
 
   const inThermal = data.thermalLift > 0.05;
   const thermalStrength = Math.min(1, data.thermalLift / 2);
+  const inFlareZone = data.altitude <= 4 && data.altitude > 0 && data.state === "airborne";
 
   return (
     <div
@@ -72,6 +73,14 @@ export function Hud({
             data-testid="thermal-badge"
           >
             THERMIEK +{data.thermalLift.toFixed(1)} m/s
+          </div>
+        )}
+        {inFlareZone && (
+          <div
+            className="rounded bg-sky-600/50 px-2 py-0.5 font-mono text-xs font-medium text-sky-100"
+            data-testid="flare-hint"
+          >
+            ↓ FLARE
           </div>
         )}
         <div className="rounded bg-black/40 px-3 py-1 font-mono text-sm font-medium text-white/95 backdrop-blur-sm">

@@ -12,6 +12,8 @@ export interface SessionStats {
   maxAltitude: number;
   /** Max horizontal distance from launch (m) */
   distanceFromLaunch: number;
+  /** Landing quality from sink rate at touchdown */
+  landingQuality?: "smooth" | "hard" | "rough";
 }
 
 /**

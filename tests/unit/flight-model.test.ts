@@ -185,6 +185,17 @@ describe("flight model", () => {
       }
       expect(sTurning.position.y).toBeLessThan(sStraight.position.y);
     });
+    it("touchdownSink captured on ground collision", () => {
+      const state = createInitialState({
+        position: { x: 0, y: 0.01, z: 0 },
+        velocity: { x: 0, y: -2.5, z: 6 },
+        inputs: { steerLeft: 0, steerRight: 0, brake: 0, acceleratedFlight: 0 },
+      });
+      const next = simulateStep(state, 1 / 60, ZERO_ENVIRONMENT);
+      expect(next.position.y).toBe(0);
+      expect(next.touchdownSink).toBeDefined();
+      expect(next.touchdownSink).toBeGreaterThanOrEqual(0);
+    });
     it("flare reduces sink when near ground with brake", () => {
       const noFlare = createInitialState({
         position: { x: 0, y: 2, z: 0 },

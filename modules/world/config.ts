@@ -3,7 +3,13 @@
  * Centralized for gameplay consistency.
  */
 
-import type { SpawnPoint, WindVector, ThermalZone, Environment } from "./types";
+import type {
+  SpawnPoint,
+  WindVector,
+  ThermalZone,
+  RidgeLiftZone,
+  Environment,
+} from "./types";
 
 /** Ground level (m) - terrain collision plane */
 export const GROUND_LEVEL = 0;
@@ -36,14 +42,26 @@ export const DEFAULT_THERMALS: ThermalZone[] = [
   { x: 120, z: 350, radius: 70, strength: 4.4 },
 ];
 
+/** Default ridge - north-south, wind from west crosses perpendicular */
+export const DEFAULT_RIDGE: RidgeLiftZone = {
+  x1: -50,
+  z1: 50,
+  x2: -50,
+  z2: 400,
+  width: 55,
+  strength: 2.2,
+};
+
 /** Default environment */
 export const DEFAULT_ENVIRONMENT: Environment = {
   wind: DEFAULT_WIND,
   thermals: DEFAULT_THERMALS,
+  ridgeLift: [DEFAULT_RIDGE],
 };
 
 /** Environment with no wind or lift - for deterministic tests */
 export const ZERO_ENVIRONMENT: Environment = {
   wind: { x: 0, z: 0 },
   thermals: [],
+  ridgeLift: [],
 };

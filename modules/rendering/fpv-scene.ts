@@ -5,7 +5,11 @@
 import * as THREE from "three";
 import type { AircraftState } from "@/modules/flight-model/state";
 import type { CameraMode } from "@/modules/rendering/types";
-import { LAUNCH_CONFIG, DEFAULT_THERMALS } from "@/modules/world/config";
+import {
+  LAUNCH_CONFIG,
+  DEFAULT_THERMALS,
+  DEFAULT_RIDGE,
+} from "@/modules/world/config";
 
 export interface FpvScene {
   scene: THREE.Scene;
@@ -82,6 +86,25 @@ export function createFpvScene(canvas: HTMLCanvasElement): FpvScene {
     thermalCylinder.renderOrder = 0;
     scene.add(thermalCylinder);
   }
+
+  // Ridge lift - low wall along ridge line, windward side visible
+  const ridgeLen = Math.hypot(
+    DEFAULT_RIDGE.x2 - DEFAULT_RIDGE.x1,
+    DEFAULT_RIDGE.z2 - DEFAULT_RIDGE.z1
+  );
+  const ridgeMidX = (DEFAULT_RIDGE.x1 + DEFAULT_RIDGE.x2) / 2;
+  const ridgeMidZ = (DEFAULT_RIDGE.z1 + DEFAULT_RIDGE.z2) / 2;
+  const ridgeAngle = Math.atan2(
+    DEFAULT_RIDGE.z2 - DEFAULT_RIDGE.z1,
+    DEFAULT_RIDGE.x2 - DEFAULT_RIDGE.x1
+  );
+  const ridgeWall = new THREE.Mesh(
+    new THREE.BoxGeometry(ridgeLen, 12, DEFAULT_RIDGE.width * 2),
+    new THREE.MeshLambertMaterial({ color: 0x6b5b4a })
+  );
+  ridgeWall.position.set(ridgeMidX, 6, ridgeMidZ);
+  ridgeWall.rotation.y = -ridgeAngle;
+  scene.add(ridgeWall);
 
   // Reference markers - sparse grid for orientation (reduced for performance)
   const addPillar = (x: number, y: number, z: number, color: number, height = 20) => {

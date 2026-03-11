@@ -40,3 +40,23 @@ export function didJustLand(
 ): boolean {
   return !isLanded(prevState) && isLanded(nextState);
 }
+
+/** Landing quality based on sink rate at touchdown (m/s, positive = downward) */
+export type LandingQuality = "smooth" | "hard" | "rough";
+
+/** Thresholds (m/s sink): smooth < 1.0, hard 1.0–2.5, rough > 2.5 */
+export const SMOOTH_LANDING_THRESHOLD = 1.0;
+export const HARD_LANDING_THRESHOLD = 2.5;
+
+const SMOOTH_THRESHOLD = SMOOTH_LANDING_THRESHOLD;
+const HARD_THRESHOLD = HARD_LANDING_THRESHOLD;
+
+/**
+ * Classify landing quality from sink rate at touchdown.
+ * Paraglider-typical: good flare < 1 m/s, heavy 1–2.5, rough > 2.5.
+ */
+export function classifyLandingQuality(sinkRate: number): LandingQuality {
+  if (sinkRate < SMOOTH_THRESHOLD) return "smooth";
+  if (sinkRate <= HARD_THRESHOLD) return "hard";
+  return "rough";
+}

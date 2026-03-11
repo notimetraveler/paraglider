@@ -3,6 +3,7 @@ import {
   deriveFlightState,
   isLanded,
   didJustLand,
+  classifyLandingQuality,
 } from "@/modules/game-session/session";
 import {
   createInitialAircraftState,
@@ -90,6 +91,22 @@ describe("game session", () => {
     });
   });
 
+  describe("classifyLandingQuality", () => {
+    it("returns smooth for sink < 1.0 m/s", () => {
+      expect(classifyLandingQuality(0.5)).toBe("smooth");
+      expect(classifyLandingQuality(0.99)).toBe("smooth");
+    });
+    it("returns hard for sink 1.0–2.5 m/s", () => {
+      expect(classifyLandingQuality(1.0)).toBe("hard");
+      expect(classifyLandingQuality(1.5)).toBe("hard");
+      expect(classifyLandingQuality(2.5)).toBe("hard");
+    });
+    it("returns rough for sink > 2.5 m/s", () => {
+      expect(classifyLandingQuality(2.6)).toBe("rough");
+      expect(classifyLandingQuality(4)).toBe("rough");
+    });
+  });
+
   describe("state transitions", () => {
     it("aircraft lands after descending to ground", () => {
       let state = createInitialAircraftState({
@@ -104,6 +121,23 @@ describe("game session", () => {
       expect(state.position.y).toBe(GROUND_LEVEL);
       expect(state.velocity.x).toBe(0);
       expect(state.velocity.z).toBe(0);
+    });
+
+    it("touchdownSink is set when landing", () => {
+      let state = createInitialAircraftState({
+        position: { x: 0, y: 2, z: 0 },
+        velocity: { x: 0, y: -1.5, z: 6 },
+        airspeed: 6,
+      });
+      let next = state;
+      for (let i = 0; i < 120; i++) {
+        next = simulateStep(state, 1 / 60, ZERO_ENVIRONMENT);
+        if (isLanded(next)) break;
+        state = next;
+      }
+      expect(isLanded(next)).toBe(true);
+      expect(next.touchdownSink).toBeDefined();
+      expect(next.touchdownSink).toBeGreaterThan(0);
     });
   });
 });
