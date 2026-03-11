@@ -4,6 +4,7 @@
  */
 import * as THREE from "three";
 import type { AircraftState } from "@/modules/flight-model/state";
+import type { CameraMode } from "@/modules/rendering/types";
 import { LAUNCH_CONFIG, DEFAULT_THERMALS } from "@/modules/world/config";
 
 export interface FpvScene {
@@ -177,23 +178,26 @@ export interface HeadLook {
 const TPV_DISTANCE = 18;
 /** TPV camera: height offset above glider */
 const TPV_HEIGHT = 6;
+/** Top view: height above aircraft (m) */
+const TOP_VIEW_HEIGHT = 120;
 
 /**
  * Sync camera and paraglider from aircraft state.
  * FPV: pilot eye view with head look.
  * TPV: camera behind and above glider, paraglider visible.
+ * Top: recht van boven, grond en thermiekzuilen zichtbaar.
  */
 export function syncCameraFromAircraft(
   scene: FpvScene,
   state: AircraftState,
   headLook: HeadLook = { yaw: 0, pitch: 0 },
-  cameraMode: "fpv" | "tpv" = "fpv"
+  cameraMode: CameraMode = "fpv"
 ): void {
   const { position, heading, velocity, bank, pitchAttitude } = state;
 
-  // Update paraglider mesh
-  scene.paraglider.visible = cameraMode === "tpv";
-  if (cameraMode === "tpv") {
+  // Update paraglider mesh - visible in TPV and top view
+  scene.paraglider.visible = cameraMode === "tpv" || cameraMode === "top";
+  if (scene.paraglider.visible) {
     scene.paraglider.position.set(position.x, position.y + 0.5, position.z);
     scene.paraglider.rotation.order = "YXZ";
     scene.paraglider.rotation.set(pitchAttitude, heading, -bank);
@@ -227,6 +231,13 @@ export function syncCameraFromAircraft(
       position.z + forwardZ * cosPitch * lookDistance
     );
     scene.camera.rotateOnAxis(new THREE.Vector3(0, 0, -1), -bank);
+  } else if (cameraMode === "top") {
+    // Top view: recht van boven, kijk naar grond
+    scene.camera.fov = BASE_FOV;
+    scene.camera.updateProjectionMatrix();
+    const camY = position.y + TOP_VIEW_HEIGHT;
+    scene.camera.position.set(position.x, camY, position.z);
+    scene.camera.lookAt(position.x, 0, position.z);
   } else {
     // TPV: fixed FOV, camera behind and above
     scene.camera.fov = BASE_FOV;

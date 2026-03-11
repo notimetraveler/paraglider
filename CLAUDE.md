@@ -49,8 +49,11 @@ The user should feel suspended beneath a paraglider wing in a navigable airspace
 ## Camera and Controls
 
 ### Camera
-- First-person view is the primary and default experience.
-- Third-person camera may exist only as a debug/development tool.
+- First-person view (FPV) is the primary and default experience.
+- **Key C** cycles camera modes: FPV → TPV → Top → FPV.
+- **FPV**: Pilot eye view, paraglider not visible.
+- **TPV**: Third-person, camera behind and above glider, paraglider visible.
+- **Top**: Top-down view from above (~120 m), looking straight down at ground, thermals, and objects. Paraglider visible. Steering (Arrow Left/Right) works in all modes.
 - Do not let debug cameras become the main gameplay camera.
 
 ### Keyboard controls (current implementation)
@@ -66,6 +69,8 @@ The user should feel suspended beneath a paraglider wing in a navigable airspace
 | **W** | Look up | Smooth ramp; returns to center when released |
 | **X** | Look down | Smooth ramp; returns to center when released |
 | **S** | Look forward (reset view) | Smoothly returns head look to center |
+| **P** | Pause / Resume | Toggles pause overlay |
+| **C** | FPV / TPV / Top | Cycles camera: FPV → TPV → Top → FPV |
 
 ### Input smoothing
 All inputs use smooth ramping for a realistic, controlled feel:
@@ -304,6 +309,12 @@ When working on this repository:
 5. add or update tests
 6. run validation commands
 7. summarize what changed and what remains
+
+### Baseline and tuning discipline
+- Treat the current simulator and AGENT.md as the baseline. Do not revert desired behaviors.
+- Replace tuning only when there is a clear reason. Preserve what works.
+- Before changing flight behavior: (1) summarize what is already tuned, (2) name what stays untouched, (3) identify only 2–4 weak points, (4) improve only those.
+- Avoid broad rewrites or retuning everything at once.
 
 ### Validation discipline
 Regularly run:

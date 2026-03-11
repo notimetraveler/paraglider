@@ -68,7 +68,7 @@ The simulator uses the following keyboard controls as the default control scheme
 | **X** | Look down | Smooth ramp; returns to center when released |
 | **S** | Look forward (reset view) | Smoothly returns head look to center |
 | **P** | Pause / Resume | Toggles pause overlay |
-| **C** | FPV / TPV | Toggles first-person / third-person camera |
+| **C** | FPV / TPV / Top | Cycles camera: FPV → TPV → Top → FPV |
 
 ### 4.2 Input Smoothing
 
@@ -426,10 +426,15 @@ The simulator must implement the basic lifecycle of a paraglider session.
 
 ## 15. Camera Requirements
 
-First-person view is mandatory.
+First-person view is the primary and default camera mode.
+
+### Camera modes (Key C cycles)
+- **FPV** (first-person): Pilot eye view, primary experience. Paraglider not visible.
+- **TPV** (third-person): Camera behind and above glider. Paraglider visible.
+- **Top**: Top-down view from above the aircraft (~120 m), looking straight down at ground, thermals, and objects. Paraglider visible. Steering (Arrow Left/Right) works in all modes.
 
 ### Primary camera requirements
-- Camera should be placed to simulate pilot eye position
+- Camera should be placed to simulate pilot eye position in FPV
 - Camera must look forward along the flight path/harness orientation
 - Camera movement should communicate banking/turning subtly
 - Camera should preserve readability of the horizon and landing zone
@@ -648,7 +653,43 @@ The project must have scripts for:
 
 ---
 
-## 24. File and Module Organization
+## 24. Baseline and Tuning Workflow
+
+When improving flight behavior or tuning, work explicitly from the current implementation. Treat the simulator and this AGENT.md as the baseline.
+
+### Rules
+- Do not revert previously desired behaviors
+- Replace existing tuning only when there is a clear reason
+- Preserve improvements that already work well
+- Make only targeted improvements on remaining weak points
+- Avoid broad rewrites or retuning everything at once
+
+### Before making substantial changes
+1. **Summarize** which flight behavior has already been consciously adjusted (see below)
+2. **Name** which parts you will leave untouched
+3. **Identify** only the 2–4 biggest remaining weak points
+4. **Improve** only those points
+
+### Current flight behavior (consciously tuned)
+- **Speed/polar**: Brake reduces speed (factor 0.45 at full brake), accel increases (1.45×). Trim 8 m/s, min 2 m/s.
+- **Sink polar**: Trim 1.25 m/s, full brake 0.65 m/s, full accel 2.6 m/s. Turn-induced sink (bank factor 0.22).
+- **Bank/turn**: Max bank 35°, coordinated turn (ω = g·tan(bank)/v). Bank rate up 0.95/s, down 1.4/s.
+- **Pitch attitude**: Brake = horizon up, accel = horizon down. Max ±10°, rates 1.1/1.5.
+- **Flare**: Below 4 m, brake ≥ 0.4 reduces sink (flare effect). Flare sink reduction 0.5 m/s.
+- **Near-stall**: Brake > 0.92 adds sink penalty (0.4 m/s) for over-braking.
+- **Thermal response**: Vertical speed blend rate 80 for direct lift response.
+- **Input smoothing**: Steer 0.7/0.5, brake/accel 0.8, head look 0.45/0.35.
+
+### Leave untouched unless justified
+- Core polar and sink relationships
+- Coordinated turn physics
+- Flare and near-stall logic
+- Input ramp rates that feel good
+- Camera modes (FPV, TPV, Top) and C-key cycle
+
+---
+
+## 25. File and Module Organization
 
 Use a clean and scalable structure.
 

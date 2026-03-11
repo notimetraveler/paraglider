@@ -84,9 +84,9 @@ export function SimulatorShell() {
   const [hudTuningDebug, setHudTuningDebug] = useState<HudTuningDebug | null>(null);
   const [flightState, setFlightState] = useState<FlightState>("airborne");
   const [isPaused, setIsPaused] = useState(false);
-  const [cameraMode, setCameraMode] = useState<"fpv" | "tpv">("fpv");
+  const [cameraMode, setCameraMode] = useState<"fpv" | "tpv" | "top">("fpv");
   const isPausedRef = useRef(false);
-  const cameraModeRef = useRef<"fpv" | "tpv">("fpv");
+  const cameraModeRef = useRef<"fpv" | "tpv" | "top">("fpv");
   useEffect(() => {
     isPausedRef.current = isPaused;
     cameraModeRef.current = cameraMode;
@@ -127,7 +127,9 @@ export function SimulatorShell() {
       }
       if (e.code === "KeyC" && !e.repeat) {
         e.preventDefault();
-        setCameraMode((m) => (m === "fpv" ? "tpv" : "fpv"));
+        setCameraMode((m) =>
+          m === "fpv" ? "tpv" : m === "tpv" ? "top" : "fpv"
+        );
       }
     };
     window.addEventListener("keydown", onKey);
@@ -349,7 +351,7 @@ export function SimulatorShell() {
         isPaused={isPaused}
       />
       <div className="pointer-events-none absolute bottom-4 left-6 font-mono text-[11px] text-white/60">
-        ← → sturen | ↑ sneller | ↓ remmen | a/d w/x s kijk | P pauze | C FPV/TPV
+        ← → sturen | ↑ sneller | ↓ remmen | a/d w/x s kijk | P pauze | C FPV/TPV/Top
       </div>
       <div className="pointer-events-auto absolute right-4 top-4 flex flex-col gap-2">
         <button
@@ -362,11 +364,15 @@ export function SimulatorShell() {
         </button>
         <button
           type="button"
-          onClick={() => setCameraMode((m) => (m === "fpv" ? "tpv" : "fpv"))}
+          onClick={() =>
+            setCameraMode((m) =>
+              m === "fpv" ? "tpv" : m === "tpv" ? "top" : "fpv"
+            )
+          }
           className="rounded bg-white/20 px-3 py-1.5 font-mono text-xs font-medium text-white transition hover:bg-white/30"
           data-testid="camera-toggle"
         >
-          {cameraMode === "fpv" ? "TPV" : "FPV"}
+          {cameraMode === "fpv" ? "TPV" : cameraMode === "tpv" ? "Top" : "FPV"}
         </button>
       </div>
       {isPaused && (
