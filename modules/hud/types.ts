@@ -12,6 +12,10 @@ export interface HudData {
   thermalLift: number;
   /** Horizontal distance to LZ center (m) - shown when approaching */
   distanceToLz?: number;
+  /** Gate progress - passed count and total */
+  gateProgress?: { passed: number; total: number };
+  /** True when in flare zone (low, approaching ground) */
+  inFlareZone?: boolean;
 }
 
 /** Smoothed control inputs for debug display */

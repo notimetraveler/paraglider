@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createFpvScene,
   resizeFpvScene,
@@ -27,7 +27,11 @@ import type {
   HudEnvDebug,
   HudTuningDebug,
 } from "@/modules/hud";
-import { DEFAULT_ENVIRONMENT, LAUNCH_CONFIG } from "@/modules/world/config";
+import {
+  getDefaultLevel,
+  environmentFromLevel,
+} from "@/modules/world/level-loader";
+import { checkGateProgress } from "@/modules/world/gates";
 import {
   formatAirtime,
   formatDistance,
@@ -75,13 +79,20 @@ function useInitialDebugMode(): boolean {
 }
 
 export function SimulatorShell() {
+  const level = useMemo(() => getDefaultLevel(), []);
+  const env = useMemo(() => environmentFromLevel(level), [level]);
+  const getGroundHeight = env.getGroundHeight;
+
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<FpvScene | null>(null);
-  const stateRef = useRef<AircraftState>(createLaunchState());
+  const stateRef = useRef<AircraftState>(
+    createLaunchState(level.launch)
+  );
   const brakeLevelRef = useRef(0);
   const accelLevelRef = useRef(0);
   const steerLeftLevelRef = useRef(0);
   const steerRightLevelRef = useRef(0);
+  const gatePassedRef = useRef(0);
   const { raw, controls } = useInput();
   const controlsRef = useRef<ControlInputs>(controls);
   const rawRef = useRef(raw);
@@ -118,7 +129,11 @@ export function SimulatorShell() {
   }, [settings]);
 
   const [hudData, setHudData] = useState<HudData>(() =>
-    mapAircraftToHudData(createLaunchState(), DEFAULT_ENVIRONMENT)
+    mapAircraftToHudData(createLaunchState(level.launch), env, {
+      getGroundHeight,
+      landingZone: level.landingZone,
+      gateProgress: { passed: 0, total: level.gates.length },
+    })
   );
   const [hudInputDebug, setHudInputDebug] = useState<HudInputDebug | null>(null);
   const [hudEnvDebug, setHudEnvDebug] = useState<HudEnvDebug | null>(null);
@@ -142,15 +157,22 @@ export function SimulatorShell() {
   const [scoreSummary, setScoreSummary] = useState<SessionStats | null>(null);
 
   const handleRestart = () => {
-    stateRef.current = createLaunchState();
+    stateRef.current = createLaunchState(level.launch);
     brakeLevelRef.current = 0;
     accelLevelRef.current = 0;
     steerLeftLevelRef.current = 0;
     steerRightLevelRef.current = 0;
+    gatePassedRef.current = 0;
     launchTimeRef.current = performance.now();
     maxAltitudeRef.current = 0;
     maxDistanceRef.current = 0;
-    setHudData(mapAircraftToHudData(createLaunchState(), DEFAULT_ENVIRONMENT));
+    setHudData(
+      mapAircraftToHudData(createLaunchState(level.launch), env, {
+        getGroundHeight,
+        landingZone: level.landingZone,
+        gateProgress: { passed: 0, total: level.gates.length },
+      })
+    );
     setFlightState("airborne");
     setScoreSummary(null);
   };
@@ -199,7 +221,7 @@ export function SimulatorShell() {
     const width = container.clientWidth || window.innerWidth;
     const height = container.clientHeight || window.innerHeight;
 
-    const scene = createFpvScene(canvas);
+    const scene = createFpvScene(canvas, level);
     resizeFpvScene(scene, width, height);
     sceneRef.current = scene;
     launchTimeRef.current = performance.now();
@@ -283,7 +305,7 @@ export function SimulatorShell() {
         : simulateStep(
             { ...currentState, inputs: inputsCache },
             SIM_DT,
-            DEFAULT_ENVIRONMENT
+            env
           );
       stateRef.current = nextState;
 
@@ -325,7 +347,7 @@ export function SimulatorShell() {
         lastWind.volume = s.windVolume;
         wind.setConfig(lastWind);
       }
-      const fs = deriveFlightState(nextState);
+      const fs = deriveFlightState(nextState, getGroundHeight);
       if (isPausedRef.current) {
         vario.stop();
         wind.stop();
@@ -337,15 +359,23 @@ export function SimulatorShell() {
           nextState.position.y
         );
         const dist = Math.sqrt(
-          (nextState.position.x - LAUNCH_CONFIG.x) ** 2 +
-            (nextState.position.z - LAUNCH_CONFIG.z) ** 2
+          (nextState.position.x - level.launch.x) ** 2 +
+            (nextState.position.z - level.launch.z) ** 2
         );
         maxDistanceRef.current = Math.max(maxDistanceRef.current, dist);
       } else {
         vario.stop();
         wind.stop();
       }
-      if (didJustLand(currentState, nextState)) {
+      const gateProgress = checkGateProgress(
+        nextState.position.x,
+        nextState.position.z,
+        level.gates,
+        gatePassedRef.current
+      );
+      gatePassedRef.current = gateProgress.passed;
+
+      if (didJustLand(currentState, nextState, getGroundHeight)) {
         const airtime = (performance.now() - launchTimeRef.current) / 1000;
         const sink = nextState.touchdownSink ?? 2;
         const quality = classifyLandingQuality(sink);
@@ -364,7 +394,16 @@ export function SimulatorShell() {
       const now = performance.now();
       if (now - lastHudUpdateRef.current >= HUD_UPDATE_INTERVAL_MS) {
         lastHudUpdateRef.current = now;
-        setHudData(mapAircraftToHudData(nextState, DEFAULT_ENVIRONMENT));
+        setHudData(
+          mapAircraftToHudData(nextState, env, {
+            getGroundHeight,
+            landingZone: level.landingZone,
+            gateProgress: {
+              passed: gateProgress.passed,
+              total: level.gates.length,
+            },
+          })
+        );
         setFlightState(fs);
         setHudInputDebug(
           settingsRef.current.debugMode
@@ -379,19 +418,19 @@ export function SimulatorShell() {
         setHudEnvDebug(
           settingsRef.current.debugMode
             ? {
-                windX: DEFAULT_ENVIRONMENT.wind.x,
-                windZ: DEFAULT_ENVIRONMENT.wind.z,
+                windX: env.wind.x,
+                windZ: env.wind.z,
                 thermalLift:
                   getThermalLift(
                     nextState.position.x,
                     nextState.position.z,
-                    DEFAULT_ENVIRONMENT.thermals
+                    env.thermals
                   ) +
                   getRidgeLift(
                     nextState.position.x,
                     nextState.position.z,
-                    DEFAULT_ENVIRONMENT.ridgeLift,
-                    DEFAULT_ENVIRONMENT.wind
+                    env.ridgeLift,
+                    env.wind
                   ),
               }
             : null
@@ -401,9 +440,20 @@ export function SimulatorShell() {
             ? {
                 sinkTrim: SINK_AT_TRIM,
                 bankDeg: (nextState.bank * 180) / Math.PI,
-                inFlareZone:
-                  nextState.position.y <= FLARE_ALTITUDE &&
-                  nextState.position.y > 0,
+                inFlareZone: Boolean(
+                  getGroundHeight &&
+                    nextState.position.y -
+                      getGroundHeight(
+                        nextState.position.x,
+                        nextState.position.z
+                      ) <=
+                      FLARE_ALTITUDE &&
+                    nextState.position.y >
+                      getGroundHeight(
+                        nextState.position.x,
+                        nextState.position.z
+                      )
+                ),
               }
             : null
         );
@@ -431,7 +481,7 @@ export function SimulatorShell() {
       canvas.remove();
       sceneRef.current = null;
     };
-  }, []);
+  }, [level, env, getGroundHeight]);
 
   return (
     <div ref={containerRef} className="relative h-full w-full min-h-screen">

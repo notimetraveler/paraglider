@@ -26,11 +26,19 @@ export const LAUNCH_CONFIG: SpawnPoint & { initialSpeed: number } = {
   initialSpeed: 8,
 };
 
-/** True if (x,z) is within landing zone (uses LAUNCH_CONFIG as center) */
-export function isInLandingZone(x: number, z: number): boolean {
-  const dx = x - LAUNCH_CONFIG.x;
-  const dz = z - LAUNCH_CONFIG.z;
-  return Math.sqrt(dx * dx + dz * dz) <= LANDING_ZONE_RADIUS;
+/** True if (x,z) is within landing zone */
+export function isInLandingZone(
+  x: number,
+  z: number,
+  center?: { x: number; z: number },
+  radius?: number
+): boolean {
+  const cx = center?.x ?? LAUNCH_CONFIG.x;
+  const cz = center?.z ?? LAUNCH_CONFIG.z;
+  const r = radius ?? LANDING_ZONE_RADIUS;
+  const dx = x - cx;
+  const dz = z - cz;
+  return Math.sqrt(dx * dx + dz * dz) <= r;
 }
 
 /** Altitude threshold for landed detection - within this of ground + stopped */

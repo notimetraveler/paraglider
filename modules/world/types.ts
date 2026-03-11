@@ -39,4 +39,6 @@ export interface Environment {
   wind: WindVector;
   thermals: ThermalZone[];
   ridgeLift: RidgeLiftZone[];
+  /** Optional terrain height (m). If not set, uses flat ground at 0. */
+  getGroundHeight?: (x: number, z: number) => number;
 }

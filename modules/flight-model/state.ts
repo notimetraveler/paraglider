@@ -47,12 +47,22 @@ export function createInitialAircraftState(
   };
 }
 
+/** Launch config shape - from world config or level */
+export interface LaunchConfigLike {
+  x: number;
+  y: number;
+  z: number;
+  heading: number;
+  initialSpeed: number;
+}
+
 /**
  * Create aircraft state for launch - forward start with initial gliding setup.
  * Player immediately experiences flight (forward speed + sink).
  */
-export function createLaunchState(): AircraftState {
-  const { x, y, z, heading, initialSpeed } = LAUNCH_CONFIG;
+export function createLaunchState(launch?: LaunchConfigLike): AircraftState {
+  const config = launch ?? LAUNCH_CONFIG;
+  const { x, y, z, heading, initialSpeed } = config;
   const vx = Math.sin(heading) * initialSpeed;
   const vz = Math.cos(heading) * initialSpeed;
   const vy = -SINK_AT_TRIM;

@@ -86,9 +86,17 @@ export function simulateStep(
   }
 
   // Flare: near ground, braking reduces sink (softer touchdown)
-  if (position.y <= FLARE_ALTITUDE && position.y > 0 && inputs.brake >= FLARE_BRAKE_THRESHOLD) {
+  const groundHere = env.getGroundHeight
+    ? env.getGroundHeight(position.x, position.z)
+    : GROUND_LEVEL;
+  const heightAboveGround = position.y - groundHere;
+  if (
+    heightAboveGround <= FLARE_ALTITUDE &&
+    heightAboveGround > 0 &&
+    inputs.brake >= FLARE_BRAKE_THRESHOLD
+  ) {
     const flareEffect = (inputs.brake - FLARE_BRAKE_THRESHOLD) / (1 - FLARE_BRAKE_THRESHOLD);
-    const altitudeFactor = 1 - position.y / FLARE_ALTITUDE;
+    const altitudeFactor = 1 - heightAboveGround / FLARE_ALTITUDE;
     sinkRate -= FLARE_SINK_REDUCTION * flareEffect * altitudeFactor;
   }
   sinkRate = Math.max(0.15, sinkRate);
@@ -105,6 +113,10 @@ export function simulateStep(
   const ridgeLift = getRidgeLift(nextX, nextZ, env.ridgeLift, env.wind);
   const targetVelY = -sinkRate + thermalLift + ridgeLift;
 
+  const groundAt = env.getGroundHeight
+    ? env.getGroundHeight(nextX, nextZ)
+    : GROUND_LEVEL;
+
   const blend = Math.min(1, dt * VERTICAL_SPEED_BLEND_RATE);
   let newVelY = velocity.y + (targetVelY - velocity.y) * blend;
   let newY = position.y + newVelY * dt;
@@ -114,9 +126,9 @@ export function simulateStep(
   let newVelZ = airVelZ + env.wind.z;
 
   let touchdownSink: number | undefined;
-  if (newY < GROUND_LEVEL) {
+  if (newY < groundAt) {
     touchdownSink = Math.max(0, -newVelY);
-    newY = GROUND_LEVEL;
+    newY = groundAt;
     newVelY = 0;
     newVelX = 0;
     newVelZ = 0;

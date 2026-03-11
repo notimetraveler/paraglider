@@ -40,7 +40,7 @@ export function Hud({
 
   const inThermal = data.thermalLift > 0.05;
   const thermalStrength = Math.min(1, data.thermalLift / 2);
-  const inFlareZone = data.altitude <= 4 && data.altitude > 0 && data.state === "airborne";
+  const inFlareZone = data.inFlareZone ?? (data.altitude <= 4 && data.altitude > 0 && data.state === "airborne");
 
   return (
     <div
@@ -111,6 +111,14 @@ export function Hud({
             </span>
             <span className="text-white/50">m</span>
           </div>
+          {data.gateProgress && data.gateProgress.total > 0 && (
+            <div className="flex items-baseline gap-3">
+              <span className="text-white/60">GATE</span>
+              <span className="tabular-nums font-semibold text-cyan-300">
+                {data.gateProgress.passed}/{data.gateProgress.total}
+              </span>
+            </div>
+          )}
           {data.distanceToLz !== undefined && (
             <div className="flex items-baseline gap-3">
               <span className="text-white/60">LZ</span>

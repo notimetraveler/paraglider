@@ -11,22 +11,34 @@ import {
   LANDED_SPEED_THRESHOLD,
 } from "@/modules/world/config";
 
+/** Optional terrain height function - if not provided, uses flat ground (0) */
+export type GroundHeightFn = (x: number, z: number) => number;
+
 /**
  * Derive flight state from aircraft state.
  * airborne: flying above ground
  * landed: on ground with negligible speed
  */
-export function deriveFlightState(state: AircraftState): FlightState {
-  if (isLanded(state)) return "landed";
+export function deriveFlightState(
+  state: AircraftState,
+  getGroundHeight?: GroundHeightFn
+): FlightState {
+  if (isLanded(state, getGroundHeight)) return "landed";
   return "airborne";
 }
 
 /**
  * Detect landing - aircraft on ground with negligible speed.
  */
-export function isLanded(state: AircraftState): boolean {
+export function isLanded(
+  state: AircraftState,
+  getGroundHeight?: GroundHeightFn
+): boolean {
+  const groundAt = getGroundHeight
+    ? getGroundHeight(state.position.x, state.position.z)
+    : GROUND_LEVEL;
   const atGround =
-    state.position.y <= GROUND_LEVEL + LANDED_ALTITUDE_THRESHOLD;
+    state.position.y <= groundAt + LANDED_ALTITUDE_THRESHOLD;
   const stopped = state.airspeed < LANDED_SPEED_THRESHOLD;
   return atGround && stopped;
 }
@@ -36,9 +48,12 @@ export function isLanded(state: AircraftState): boolean {
  */
 export function didJustLand(
   prevState: AircraftState,
-  nextState: AircraftState
+  nextState: AircraftState,
+  getGroundHeight?: GroundHeightFn
 ): boolean {
-  return !isLanded(prevState) && isLanded(nextState);
+  return (
+    !isLanded(prevState, getGroundHeight) && isLanded(nextState, getGroundHeight)
+  );
 }
 
 /** Landing quality based on sink rate at touchdown (m/s, positive = downward) */
