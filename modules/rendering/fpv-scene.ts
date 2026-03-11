@@ -4,23 +4,31 @@
  */
 import * as THREE from "three";
 import type { AircraftState } from "@/modules/flight-model/state";
-import { LAUNCH_CONFIG } from "@/modules/world/config";
+import { LAUNCH_CONFIG, DEFAULT_THERMALS } from "@/modules/world/config";
 
 export interface FpvScene {
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
   renderer: THREE.WebGLRenderer;
+  /** Paraglider mesh (wing + harness), visible only in TPV */
+  paraglider: THREE.Group;
 }
 
 /** Ground plane size - must be large enough for extended flight */
 const GROUND_SIZE = 2000;
 
+/** Base FOV (degrees) - paraglider pilot view */
+const BASE_FOV = 72;
+/** FOV increase at high speed for sensation (degrees) */
+const FOV_SPEED_RANGE = 4;
+
 export function createFpvScene(canvas: HTMLCanvasElement): FpvScene {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x87ceeb); // Sky blue
+  scene.fog = new THREE.Fog(0x87ceeb, 400, 1200);
 
   const aspect = window.innerWidth / window.innerHeight;
-  const camera = new THREE.PerspectiveCamera(75, aspect, 0.1, 5000);
+  const camera = new THREE.PerspectiveCamera(BASE_FOV, aspect, 0.1, 5000);
   camera.position.set(0, 2, 0);
   camera.lookAt(0, 0, 10);
 
@@ -40,30 +48,51 @@ export function createFpvScene(canvas: HTMLCanvasElement): FpvScene {
   ground.position.set(0, 0, 0);
   scene.add(ground);
 
-  // Launch area - elevated platform at spawn
+  // Launch area - ground-level marker (platform in lucht veroorzaakte donker artifact)
   const launchPlatform = new THREE.Mesh(
     new THREE.CylinderGeometry(15, 18, 2, 16),
     new THREE.MeshLambertMaterial({ color: 0x4a7c59 })
   );
-  launchPlatform.position.set(
-    LAUNCH_CONFIG.x,
-    LAUNCH_CONFIG.y + 1,
-    LAUNCH_CONFIG.z
-  );
+  launchPlatform.position.set(LAUNCH_CONFIG.x, 1, LAUNCH_CONFIG.z);
   scene.add(launchPlatform);
 
-  // Debug: reference objects - grid across large area for flight testing
-  const addPillar = (x: number, y: number, z: number, color: number, height = 25) => {
+  // Thermal zones - visuele radius = physics radius (anders zie je lift maar krijg je geen)
+  for (const t of DEFAULT_THERMALS) {
+    const visualRadius = t.radius;
+    const visualHeight = 180;
+    const thermalCylinder = new THREE.Mesh(
+      new THREE.CylinderGeometry(
+        visualRadius,
+        visualRadius * 1.15,
+        visualHeight,
+        32
+      ),
+      new THREE.MeshBasicMaterial({
+        color: 0xff7700,
+        transparent: true,
+        opacity: 0.4,
+        alphaTest: 0.3,
+        depthWrite: true,
+        side: THREE.DoubleSide,
+      })
+    );
+    thermalCylinder.position.set(t.x, visualHeight / 2, t.z);
+    thermalCylinder.renderOrder = 0;
+    scene.add(thermalCylinder);
+  }
+
+  // Reference markers - sparse grid for orientation (reduced for performance)
+  const addPillar = (x: number, y: number, z: number, color: number, height = 20) => {
     const pillar = new THREE.Mesh(
-      new THREE.CylinderGeometry(4, 5, height, 8),
+      new THREE.CylinderGeometry(3, 4, height, 8),
       new THREE.MeshLambertMaterial({ color })
     );
     pillar.position.set(x, y + height / 2, z);
     scene.add(pillar);
   };
   const colors = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff];
-  const spacing = 100;
-  const extent = 700;
+  const spacing = 200;
+  const extent = 400;
   for (let x = -extent; x <= extent; x += spacing) {
     for (let z = -extent; z <= extent; z += spacing) {
       const idx = (Math.floor(x / spacing) + Math.floor(z / spacing)) % colors.length;
@@ -77,7 +106,48 @@ export function createFpvScene(canvas: HTMLCanvasElement): FpvScene {
   directional.position.set(100, 200, 100);
   scene.add(directional);
 
-  return { scene, camera, renderer };
+  // Paraglider mesh: wing + harness, for TPV
+  const paraglider = createParagliderMesh();
+  paraglider.visible = false;
+  scene.add(paraglider);
+
+  return { scene, camera, renderer, paraglider };
+}
+
+function createParagliderMesh(): THREE.Group {
+  const group = new THREE.Group();
+
+  // Wing - flat plane (paraglider wing from behind)
+  const wing = new THREE.Mesh(
+    new THREE.PlaneGeometry(4, 1.2),
+    new THREE.MeshLambertMaterial({
+      color: 0x3366cc,
+      side: THREE.DoubleSide,
+    })
+  );
+  wing.rotation.x = Math.PI / 2; // horizontal
+  wing.position.set(0, 2.2, -0.3);
+  group.add(wing);
+
+  // Harness (pilot)
+  const harness = new THREE.Mesh(
+    new THREE.BoxGeometry(0.45, 0.9, 0.35),
+    new THREE.MeshLambertMaterial({ color: 0x444444 })
+  );
+  harness.position.set(0, 0.45, 0);
+  group.add(harness);
+
+  // Risers (simple lines from wing to harness)
+  const riserMat = new THREE.MeshLambertMaterial({ color: 0x222222 });
+  const riserGeom = new THREE.CylinderGeometry(0.02, 0.02, 1.8, 4);
+  for (const side of [-1, 1]) {
+    const r = new THREE.Mesh(riserGeom, riserMat);
+    r.position.set(side * 0.6, 1.1, -0.15);
+    r.rotation.x = Math.PI / 2;
+    group.add(r);
+  }
+
+  return group;
 }
 
 export function resizeFpvScene(
@@ -102,43 +172,72 @@ export interface HeadLook {
   pitch: number; // up/down
 }
 
+/** TPV camera: distance behind glider */
+const TPV_DISTANCE = 18;
+/** TPV camera: height offset above glider */
+const TPV_HEIGHT = 6;
+
 /**
- * Sync FPV camera position and orientation from aircraft state.
- * Three.js uses Y-up; aircraft y is altitude.
- * Camera offset by EYE_HEIGHT so pilot sees ground when landed.
- * Applies bank for realistic turning feel and optional head look.
+ * Sync camera and paraglider from aircraft state.
+ * FPV: pilot eye view with head look.
+ * TPV: camera behind and above glider, paraglider visible.
  */
 export function syncCameraFromAircraft(
   scene: FpvScene,
   state: AircraftState,
-  headLook: HeadLook = { yaw: 0, pitch: 0 }
+  headLook: HeadLook = { yaw: 0, pitch: 0 },
+  cameraMode: "fpv" | "tpv" = "fpv"
 ): void {
   const { position, heading, velocity, bank, pitchAttitude } = state;
 
+  // Update paraglider mesh
+  scene.paraglider.visible = cameraMode === "tpv";
+  if (cameraMode === "tpv") {
+    scene.paraglider.position.set(position.x, position.y + 0.5, position.z);
+    scene.paraglider.rotation.order = "YXZ";
+    scene.paraglider.rotation.set(pitchAttitude, heading, -bank);
+  }
+
   const eyeY = position.y + EYE_HEIGHT;
-  scene.camera.position.set(position.x, eyeY, position.z);
 
-  const horizontalSpeed = Math.sqrt(velocity.x ** 2 + velocity.z ** 2) || 1;
-  const basePitch = Math.atan2(-velocity.y, horizontalSpeed);
-  const clampedPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, basePitch));
-  const pitch = clampedPitch + pitchAttitude + headLook.pitch;
+  if (cameraMode === "fpv") {
+    scene.camera.position.set(position.x, eyeY, position.z);
 
-  const effectiveHeading = heading + headLook.yaw;
-  const lookDistance = 100;
-  const forwardX = Math.sin(effectiveHeading);
-  const forwardZ = Math.cos(effectiveHeading);
-  const cosPitch = Math.cos(pitch);
-  const sinPitch = Math.sin(pitch);
+    // Subtle FOV increase at higher speed for sensation
+    const speedNorm = Math.min(1, state.airspeed / 14);
+    scene.camera.fov = BASE_FOV + speedNorm * FOV_SPEED_RANGE;
+    scene.camera.updateProjectionMatrix();
 
-  scene.camera.lookAt(
-    position.x + forwardX * cosPitch * lookDistance,
-    eyeY - sinPitch * lookDistance,
-    position.z + forwardZ * cosPitch * lookDistance
-  );
+    const horizontalSpeed = Math.sqrt(velocity.x ** 2 + velocity.z ** 2) || 1;
+    const basePitch = Math.atan2(-velocity.y, horizontalSpeed);
+    const clampedPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, basePitch));
+    const pitch = clampedPitch + pitchAttitude + headLook.pitch;
 
-  // Apply bank (roll) - horizon tilts when turning.
-  // Left turn (positive bank) = left wing down = horizon tilts left. Negate for correct visual.
-  scene.camera.rotateOnAxis(new THREE.Vector3(0, 0, -1), -bank);
+    const effectiveHeading = heading + headLook.yaw;
+    const lookDistance = 100;
+    const forwardX = Math.sin(effectiveHeading);
+    const forwardZ = Math.cos(effectiveHeading);
+    const cosPitch = Math.cos(pitch);
+    const sinPitch = Math.sin(pitch);
+
+    scene.camera.lookAt(
+      position.x + forwardX * cosPitch * lookDistance,
+      eyeY - sinPitch * lookDistance,
+      position.z + forwardZ * cosPitch * lookDistance
+    );
+    scene.camera.rotateOnAxis(new THREE.Vector3(0, 0, -1), -bank);
+  } else {
+    // TPV: fixed FOV, camera behind and above
+    scene.camera.fov = BASE_FOV;
+    scene.camera.updateProjectionMatrix();
+    const backX = -Math.sin(heading);
+    const backZ = -Math.cos(heading);
+    const camX = position.x + backX * TPV_DISTANCE;
+    const camZ = position.z + backZ * TPV_DISTANCE;
+    const camY = position.y + TPV_HEIGHT;
+    scene.camera.position.set(camX, camY, camZ);
+    scene.camera.lookAt(position.x, position.y + 1.5, position.z);
+  }
 }
 
 /** Get current pitch (radians) for debug - derived from look direction */

@@ -4,6 +4,7 @@ import {
   createInitialAircraftState,
   type AircraftState,
 } from "@/modules/flight-model/state";
+import { ZERO_ENVIRONMENT } from "@/modules/world/config";
 
 function createInitialState(overrides?: Partial<AircraftState>): AircraftState {
   return createInitialAircraftState({
@@ -84,7 +85,7 @@ describe("flight model", () => {
       const circleTime = (2 * Math.PI) / turnRate;
       const steps = Math.ceil(circleTime / dt);
       for (let i = 0; i < steps; i++) {
-        state = simulateStep(state, dt);
+        state = simulateStep(state, dt, ZERO_ENVIRONMENT);
       }
       const dist = Math.sqrt((state.position.x - startX) ** 2 + (state.position.z - startZ) ** 2);
       expect(dist).toBeLessThan(20);
@@ -116,7 +117,7 @@ describe("flight model", () => {
         position: { x: 0, y: 0.02, z: 0 },
         velocity: { x: 0, y: -2, z: 0 },
       });
-      const next = simulateStep(state);
+      const next = simulateStep(state, 1 / 60, ZERO_ENVIRONMENT);
       expect(next.position.y).toBe(0);
       expect(next.velocity.y).toBe(0);
     });
@@ -125,7 +126,7 @@ describe("flight model", () => {
         position: { x: 10, y: 0.02, z: 20 },
         velocity: { x: 5, y: -2, z: 8 },
       });
-      const next = simulateStep(state);
+      const next = simulateStep(state, 1 / 60, ZERO_ENVIRONMENT);
       expect(next.position.y).toBe(0);
       expect(next.velocity.x).toBe(0);
       expect(next.velocity.y).toBe(0);

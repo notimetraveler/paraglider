@@ -9,7 +9,7 @@ import {
   createLaunchState,
   simulateStep,
 } from "@/modules/flight-model";
-import { GROUND_LEVEL } from "@/modules/world/config";
+import { GROUND_LEVEL, ZERO_ENVIRONMENT } from "@/modules/world/config";
 
 describe("game session", () => {
   describe("isLanded", () => {
@@ -98,7 +98,7 @@ describe("game session", () => {
         airspeed: 8,
       });
       for (let i = 0; i < 120; i++) {
-        state = simulateStep(state);
+        state = simulateStep(state, 1 / 60, ZERO_ENVIRONMENT);
       }
       expect(isLanded(state)).toBe(true);
       expect(state.position.y).toBe(GROUND_LEVEL);

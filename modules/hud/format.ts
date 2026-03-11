@@ -37,3 +37,14 @@ export function formatHeadingCompass(heading: number): string {
   };
   return labels[rounded] ?? `${rounded}°`;
 }
+
+const WIND_DIRS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+
+/** Format wind (wx, wz m/s) as "X.X D m/s" - D = direction wind comes FROM */
+export function formatWind(wx: number, wz: number): string {
+  const speed = Math.sqrt(wx * wx + wz * wz);
+  if (speed < 0.1) return "calm";
+  const fromDeg = (Math.atan2(-wx, -wz) * (180 / Math.PI) + 360) % 360;
+  const idx = Math.round(fromDeg / 45) % 8;
+  return `${speed.toFixed(1)} m/s ${WIND_DIRS[idx]}`;
+}

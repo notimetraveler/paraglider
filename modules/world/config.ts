@@ -1,9 +1,9 @@
 /**
- * World configuration - launch area, terrain, landing zone.
+ * World configuration - launch area, terrain, wind, lift zones.
  * Centralized for gameplay consistency.
  */
 
-import type { SpawnPoint } from "./types";
+import type { SpawnPoint, WindVector, ThermalZone, Environment } from "./types";
 
 /** Ground level (m) - terrain collision plane */
 export const GROUND_LEVEL = 0;
@@ -22,3 +22,28 @@ export const LANDED_ALTITUDE_THRESHOLD = 0.5;
 
 /** Speed threshold (m/s) - below this when on ground = landed */
 export const LANDED_SPEED_THRESHOLD = 0.5;
+
+/** Default wind - from west (negative X) at 5 m/s - clearly noticeable drift */
+export const DEFAULT_WIND: WindVector = {
+  x: -5,
+  z: 0,
+};
+
+/** Default thermals - groot genoeg om soepel te cirkelen */
+export const DEFAULT_THERMALS: ThermalZone[] = [
+  { x: 60, z: 100, radius: 80, strength: 3.8 },
+  { x: -80, z: 250, radius: 75, strength: 3.2 },
+  { x: 120, z: 350, radius: 70, strength: 2.8 },
+];
+
+/** Default environment */
+export const DEFAULT_ENVIRONMENT: Environment = {
+  wind: DEFAULT_WIND,
+  thermals: DEFAULT_THERMALS,
+};
+
+/** Environment with no wind or lift - for deterministic tests */
+export const ZERO_ENVIRONMENT: Environment = {
+  wind: { x: 0, z: 0 },
+  thermals: [],
+};

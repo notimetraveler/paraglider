@@ -2,5 +2,6 @@
 export interface ScoreSummary {
   airtime: number;
   maxAltitude: number;
-  landingSmoothness?: number;
+  /** Max horizontal distance from launch (m) */
+  distance: number;
 }

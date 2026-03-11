@@ -1,5 +1,7 @@
 import type { AircraftState } from "./state";
-import { GROUND_LEVEL } from "@/modules/world/config";
+import { GROUND_LEVEL, DEFAULT_ENVIRONMENT } from "@/modules/world/config";
+import type { Environment } from "@/modules/world/types";
+import { getThermalLift } from "@/modules/world/lift";
 
 const SIM_DT = 1 / 60; // Fixed timestep for deterministic simulation
 
@@ -35,11 +37,12 @@ const PITCH_ATTITUDE_RATE_DOWN = 1.8;
 /**
  * Advance flight simulation by one fixed timestep.
  * Uses paraglider-typical sink rates (not free fall).
- * Includes ground collision - aircraft cannot go below GROUND_LEVEL.
+ * Includes ground collision, wind drift, and thermal lift.
  */
 export function simulateStep(
   state: AircraftState,
-  dt: number = SIM_DT
+  dt: number = SIM_DT,
+  env: Environment = DEFAULT_ENVIRONMENT
 ): AircraftState {
   const { position, velocity, heading, inputs } = state;
 
@@ -80,19 +83,23 @@ export function simulateStep(
     accelSink * inputs.acceleratedFlight;
   // Bank increases sink (turn cost)
   const bankSinkExtra = Math.abs(newBank) * BANK_SINK_FACTOR * sinkRate;
-  const targetVelY = -(sinkRate + bankSinkExtra);
+  const thermalLift = getThermalLift(position.x, position.z, env.thermals);
+  const targetVelY = -(sinkRate + bankSinkExtra) + thermalLift;
 
   const newHeading = heading + turnRate * dt;
-  const dx = Math.sin(newHeading) * forwardSpeed * dt;
-  const dz = Math.cos(newHeading) * forwardSpeed * dt;
+  const airVelX = Math.sin(newHeading) * forwardSpeed;
+  const airVelZ = Math.cos(newHeading) * forwardSpeed;
+  const dx = (airVelX + env.wind.x) * dt;
+  const dz = (airVelZ + env.wind.z) * dt;
 
-  const blend = Math.min(1, dt * 8);
+  // Directe thermiek-respons: geen vertraging, directe lift
+  const blend = Math.min(1, dt * 60);
   let newVelY = velocity.y + (targetVelY - velocity.y) * blend;
   let newY = position.y + newVelY * dt;
   let newX = position.x + dx;
   let newZ = position.z + dz;
-  let newVelX = Math.sin(newHeading) * forwardSpeed;
-  let newVelZ = Math.cos(newHeading) * forwardSpeed;
+  let newVelX = airVelX + env.wind.x;
+  let newVelZ = airVelZ + env.wind.z;
 
   if (newY < GROUND_LEVEL) {
     newY = GROUND_LEVEL;

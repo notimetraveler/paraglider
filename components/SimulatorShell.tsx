@@ -13,11 +13,19 @@ import {
   simulateStep,
   type AircraftState,
 } from "@/modules/flight-model";
-import { deriveFlightState } from "@/modules/game-session";
+import { deriveFlightState, didJustLand } from "@/modules/game-session";
 import type { FlightState } from "@/modules/flight-model/types";
 import type { ControlInputs } from "@/modules/input";
 import { mapAircraftToHudData, mapInputsToDebug } from "@/modules/hud";
-import type { HudData, HudInputDebug } from "@/modules/hud";
+import type { HudData, HudInputDebug, HudEnvDebug } from "@/modules/hud";
+import { DEFAULT_ENVIRONMENT, LAUNCH_CONFIG } from "@/modules/world/config";
+import {
+  formatAirtime,
+  formatDistance,
+  type SessionStats,
+} from "@/modules/scoring";
+import { getThermalLift } from "@/modules/world/lift";
+import { createVariometer } from "@/modules/audio";
 import { useInput } from "./InputManager";
 import { Hud } from "./Hud";
 
@@ -57,11 +65,25 @@ export function SimulatorShell() {
   }, [debugMode]);
 
   const [hudData, setHudData] = useState<HudData>(() =>
-    mapAircraftToHudData(createLaunchState())
+    mapAircraftToHudData(createLaunchState(), DEFAULT_ENVIRONMENT)
   );
   const [hudInputDebug, setHudInputDebug] = useState<HudInputDebug | null>(null);
+  const [hudEnvDebug, setHudEnvDebug] = useState<HudEnvDebug | null>(null);
   const [flightState, setFlightState] = useState<FlightState>("airborne");
+  const [isPaused, setIsPaused] = useState(false);
+  const [cameraMode, setCameraMode] = useState<"fpv" | "tpv">("fpv");
+  const isPausedRef = useRef(false);
+  const cameraModeRef = useRef<"fpv" | "tpv">("fpv");
+  useEffect(() => {
+    isPausedRef.current = isPaused;
+    cameraModeRef.current = cameraMode;
+  }, [isPaused, cameraMode]);
   const lastHudUpdateRef = useRef(0);
+  const varioResumedRef = useRef(false);
+  const launchTimeRef = useRef(0);
+  const maxAltitudeRef = useRef(0);
+  const maxDistanceRef = useRef(0);
+  const [scoreSummary, setScoreSummary] = useState<SessionStats | null>(null);
 
   const handleRestart = () => {
     stateRef.current = createLaunchState();
@@ -69,8 +91,12 @@ export function SimulatorShell() {
     accelLevelRef.current = 0;
     steerLeftLevelRef.current = 0;
     steerRightLevelRef.current = 0;
-    setHudData(mapAircraftToHudData(createLaunchState()));
+    launchTimeRef.current = performance.now();
+    maxAltitudeRef.current = 0;
+    maxDistanceRef.current = 0;
+    setHudData(mapAircraftToHudData(createLaunchState(), DEFAULT_ENVIRONMENT));
     setFlightState("airborne");
+    setScoreSummary(null);
   };
 
   useEffect(() => {
@@ -80,14 +106,27 @@ export function SimulatorShell() {
 
   const headLookRef = useRef<HeadLook>({ yaw: 0, pitch: 0 });
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code === "KeyP" && !e.repeat) {
+        e.preventDefault();
+        setIsPaused((p) => !p);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   const BRAKE_ACCEL_RATE = 0.8;
-  /** Steer ramp: slower than brake for smooth, controlled turns */
-  const STEER_RAMP_UP = 0.45;
-  const STEER_RAMP_DOWN = 0.35;
+  /** Steer ramp: sneller opbouwen voor natuurlijker cirkelen in thermiek */
+  const STEER_RAMP_UP = 0.7;
+  const STEER_RAMP_DOWN = 0.5;
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
+
+    const vario = createVariometer({ volume: 0.25, enabled: true });
 
     const canvas = document.createElement("canvas");
     canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;display:block;";
@@ -99,6 +138,9 @@ export function SimulatorShell() {
     const scene = createFpvScene(canvas);
     resizeFpvScene(scene, width, height);
     sceneRef.current = scene;
+    launchTimeRef.current = performance.now();
+    maxAltitudeRef.current = 0;
+    maxDistanceRef.current = 0;
 
     let frameId: number;
     function animate() {
@@ -161,28 +203,70 @@ export function SimulatorShell() {
       steerRightLevelRef.current = steerRightLevel;
 
       const currentState = stateRef.current;
-      const nextState = simulateStep(
-        {
-          ...currentState,
-          inputs: {
-            steerLeft: steerLeftLevel,
-            steerRight: steerRightLevel,
-            brake: brakeLevel,
-            acceleratedFlight: accelLevel,
-          },
-        },
-        SIM_DT
-      );
+      const nextState = isPausedRef.current
+        ? currentState
+        : simulateStep(
+            {
+              ...currentState,
+              inputs: {
+                steerLeft: steerLeftLevel,
+                steerRight: steerRightLevel,
+                brake: brakeLevel,
+                acceleratedFlight: accelLevel,
+              },
+            },
+            SIM_DT,
+            DEFAULT_ENVIRONMENT
+          );
       stateRef.current = nextState;
 
-      syncCameraFromAircraft(scene, nextState, headLookRef.current);
+      syncCameraFromAircraft(
+        scene,
+        nextState,
+        headLookRef.current,
+        cameraModeRef.current
+      );
       scene.renderer.render(scene.scene, scene.camera);
+
+      if (
+        !varioResumedRef.current &&
+        (rawInput.brake ||
+          rawInput.acceleratedFlight ||
+          rawInput.left ||
+          rawInput.right)
+      ) {
+        varioResumedRef.current = true;
+        void vario.resume();
+      }
+      const fs = deriveFlightState(nextState);
+      if (fs === "airborne") {
+        vario.update(nextState.verticalSpeed);
+        maxAltitudeRef.current = Math.max(
+          maxAltitudeRef.current,
+          nextState.position.y
+        );
+        const dist = Math.sqrt(
+          (nextState.position.x - LAUNCH_CONFIG.x) ** 2 +
+            (nextState.position.z - LAUNCH_CONFIG.z) ** 2
+        );
+        maxDistanceRef.current = Math.max(maxDistanceRef.current, dist);
+      } else {
+        vario.stop();
+      }
+      if (didJustLand(currentState, nextState)) {
+        const airtime = (performance.now() - launchTimeRef.current) / 1000;
+        setScoreSummary({
+          airtimeSeconds: airtime,
+          maxAltitude: maxAltitudeRef.current,
+          distanceFromLaunch: maxDistanceRef.current,
+        });
+      }
 
       const now = performance.now();
       if (now - lastHudUpdateRef.current >= HUD_UPDATE_INTERVAL_MS) {
         lastHudUpdateRef.current = now;
-        setHudData(mapAircraftToHudData(nextState));
-        setFlightState(deriveFlightState(nextState));
+        setHudData(mapAircraftToHudData(nextState, DEFAULT_ENVIRONMENT));
+        setFlightState(fs);
         setHudInputDebug(
           debugModeRef.current
             ? mapInputsToDebug({
@@ -191,6 +275,19 @@ export function SimulatorShell() {
                 brake: brakeLevelRef.current,
                 acceleratedFlight: accelLevelRef.current,
               })
+            : null
+        );
+        setHudEnvDebug(
+          debugModeRef.current
+            ? {
+                windX: DEFAULT_ENVIRONMENT.wind.x,
+                windZ: DEFAULT_ENVIRONMENT.wind.z,
+                thermalLift: getThermalLift(
+                  nextState.position.x,
+                  nextState.position.z,
+                  DEFAULT_ENVIRONMENT.thermals
+                ),
+              }
             : null
         );
       }
@@ -211,6 +308,7 @@ export function SimulatorShell() {
     return () => {
       cancelAnimationFrame(frameId);
       resizeObserver.disconnect();
+      vario.stop();
       scene.renderer.dispose();
       canvas.remove();
       sceneRef.current = null;
@@ -222,19 +320,76 @@ export function SimulatorShell() {
       <Hud
         data={hudData}
         inputDebug={hudInputDebug}
+        envDebug={hudEnvDebug}
         debugMode={debugMode}
+        isPaused={isPaused}
       />
       <div className="pointer-events-none absolute bottom-4 left-6 font-mono text-[11px] text-white/60">
-        ← → sturen | ↑ sneller | ↓ remmen | a/d w/x s kijk
+        ← → sturen | ↑ sneller | ↓ remmen | a/d w/x s kijk | P pauze
       </div>
+      <div className="pointer-events-auto absolute right-4 top-4 flex flex-col gap-2">
+        <button
+          type="button"
+          onClick={() => setIsPaused((p) => !p)}
+          className="rounded bg-white/20 px-3 py-1.5 font-mono text-xs font-medium text-white transition hover:bg-white/30"
+          data-testid="pause-button"
+        >
+          {isPaused ? "Hervat" : "Pauze"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setCameraMode((m) => (m === "fpv" ? "tpv" : "fpv"))}
+          className="rounded bg-white/20 px-3 py-1.5 font-mono text-xs font-medium text-white transition hover:bg-white/30"
+          data-testid="camera-toggle"
+        >
+          {cameraMode === "fpv" ? "TPV" : "FPV"}
+        </button>
+      </div>
+      {isPaused && (
+        <div
+          className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 backdrop-blur-[2px]"
+          data-testid="pause-overlay"
+        >
+          <p className="mb-4 font-mono text-lg font-medium text-white/95">
+            Pauze
+          </p>
+          <button
+            type="button"
+            onClick={() => setIsPaused(false)}
+            className="rounded bg-white/20 px-4 py-2 font-mono text-sm text-white transition hover:bg-white/30"
+          >
+            Hervat
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setIsPaused(false);
+              handleRestart();
+            }}
+            className="mt-2 rounded bg-white/15 px-4 py-2 font-mono text-xs text-white/90 transition hover:bg-white/25"
+          >
+            Opnieuw
+          </button>
+        </div>
+      )}
       {flightState === "landed" && (
         <div
-          className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 backdrop-blur-sm"
+          className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm"
           data-testid="landed-overlay"
         >
-          <p className="mb-4 font-mono text-xl font-semibold text-white">
+          <p className="mb-2 font-mono text-xl font-semibold text-white">
             Geland
           </p>
+          {scoreSummary && (
+            <div
+              className="mb-4 flex flex-col gap-1 rounded bg-black/40 px-6 py-3 font-mono text-sm text-white/90"
+              data-testid="landing-summary"
+            >
+              <span>Vluchttijd: {formatAirtime(scoreSummary.airtimeSeconds)}</span>
+              <span>Grootste hoogte: {Math.round(scoreSummary.maxAltitude)} m</span>
+              <span>Afstand: {formatDistance(scoreSummary.distanceFromLaunch)}</span>
+            </div>
+          )}
           <button
             type="button"
             onClick={handleRestart}

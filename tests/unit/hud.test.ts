@@ -5,10 +5,12 @@ import {
   formatVerticalSpeed,
   formatHeading,
   formatHeadingCompass,
+  formatWind,
   mapAircraftToHudData,
   mapInputsToDebug,
 } from "@/modules/hud";
 import { createInitialAircraftState } from "@/modules/flight-model";
+import { ZERO_ENVIRONMENT } from "@/modules/world/config";
 
 describe("hud format", () => {
   describe("formatSpeed", () => {
@@ -49,6 +51,16 @@ describe("hud format", () => {
     });
   });
 
+  describe("formatWind", () => {
+    it("returns calm for zero wind", () => {
+      expect(formatWind(0, 0)).toBe("calm");
+    });
+    it("returns speed and direction (wind FROM) for non-zero wind", () => {
+      expect(formatWind(0, 3)).toMatch(/3\.0 m\/s S/);
+      expect(formatWind(3, 0)).toMatch(/3\.0 m\/s W/);
+    });
+  });
+
   describe("formatHeadingCompass", () => {
     it("returns cardinal labels for exact directions", () => {
       expect(formatHeadingCompass(0)).toBe("N");
@@ -72,17 +84,20 @@ describe("hud map", () => {
         verticalSpeed: -1.2,
         heading: Math.PI / 4,
       });
-      const hud = mapAircraftToHudData(state);
+      const hud = mapAircraftToHudData(state, ZERO_ENVIRONMENT);
       expect(hud.airspeed).toBe(8.5);
       expect(hud.altitude).toBe(200);
       expect(hud.verticalSpeed).toBe(-1.2);
       expect(hud.heading).toBe(Math.PI / 4);
+      expect(hud.windX).toBe(0);
+      expect(hud.windZ).toBe(0);
+      expect(hud.thermalLift).toBe(0);
     });
     it("returns airborne when above ground", () => {
       const state = createInitialAircraftState({
         position: { x: 0, y: 100, z: 0 },
       });
-      const hud = mapAircraftToHudData(state);
+      const hud = mapAircraftToHudData(state, ZERO_ENVIRONMENT);
       expect(hud.state).toBe("airborne");
     });
     it("returns landed when on ground with low speed", () => {
@@ -91,7 +106,7 @@ describe("hud map", () => {
         airspeed: 0,
         velocity: { x: 0, y: 0, z: 0 },
       });
-      const hud = mapAircraftToHudData(state);
+      const hud = mapAircraftToHudData(state, ZERO_ENVIRONMENT);
       expect(hud.state).toBe("landed");
     });
   });

@@ -72,7 +72,7 @@ All inputs use smooth ramping for a realistic, controlled feel:
 
 - **Flight controls (steer, brake, accel)**: Ramp up when key held, ramp down when released. Brake and accel return to 0% when keys are released.
 - **Look controls (a, d, w, x)**: Same ramp style as steer. When released, head look smoothly returns to center. Key **S** also returns head look to center.
-- **Steer**: Ramp up ~0.45/s, ramp down ~0.35/s.
+- **Steer**: Ramp up ~0.7/s, ramp down ~0.5/s.
 - **Brake/Accel**: Ramp up/down ~0.8/s.
 - **Head look**: Ramp up ~0.45/s, ramp down ~0.35/s (same as steer).
 

@@ -4,17 +4,27 @@ import {
   LANDED_ALTITUDE_THRESHOLD,
   LANDED_SPEED_THRESHOLD,
 } from "@/modules/world/config";
+import { getThermalLift } from "@/modules/world/lift";
+import type { Environment } from "@/modules/world/types";
 import type { HudData, HudInputDebug } from "./types";
 
 /**
  * Map aircraft simulation state to HUD display data.
  * Pure function - no side effects.
  */
-export function mapAircraftToHudData(state: AircraftState): HudData {
+export function mapAircraftToHudData(
+  state: AircraftState,
+  env: Environment
+): HudData {
   const atGround =
     state.position.y <= GROUND_LEVEL + LANDED_ALTITUDE_THRESHOLD;
   const stopped = state.airspeed < LANDED_SPEED_THRESHOLD;
   const sessionState = atGround && stopped ? "landed" : "airborne";
+  const thermalLift = getThermalLift(
+    state.position.x,
+    state.position.z,
+    env.thermals
+  );
 
   return {
     airspeed: state.airspeed,
@@ -22,6 +32,9 @@ export function mapAircraftToHudData(state: AircraftState): HudData {
     verticalSpeed: state.verticalSpeed,
     heading: state.heading,
     state: sessionState,
+    windX: env.wind.x,
+    windZ: env.wind.z,
+    thermalLift,
   };
 }
 
