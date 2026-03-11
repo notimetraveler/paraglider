@@ -9,6 +9,7 @@ import {
   LAUNCH_CONFIG,
   DEFAULT_THERMALS,
   DEFAULT_RIDGE,
+  LANDING_ZONE_RADIUS,
 } from "@/modules/world/config";
 
 export interface FpvScene {
@@ -21,6 +22,28 @@ export interface FpvScene {
 
 /** Ground plane size - must be large enough for extended flight */
 const GROUND_SIZE = 2000;
+
+/** Grid cell size (m) - texture scale for depth perception */
+const GROUND_GRID_SIZE = 50;
+
+/** Create subtle ground texture - light 50m grid for scale/depth, not arcade */
+function createGroundTexture(): THREE.CanvasTexture {
+  const size = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "#228b22";
+  ctx.fillRect(0, 0, size, size);
+  ctx.strokeStyle = "rgba(255,255,255,0.14)";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(0.5, 0.5, size - 1, size - 1);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(GROUND_SIZE / GROUND_GRID_SIZE, GROUND_SIZE / GROUND_GRID_SIZE);
+  return tex;
+}
 
 /** Base FOV (degrees) - paraglider pilot view */
 const BASE_FOV = 72;
@@ -46,13 +69,30 @@ export function createFpvScene(canvas: HTMLCanvasElement): FpvScene {
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
+  const groundTex = createGroundTexture();
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE),
-    new THREE.MeshLambertMaterial({ color: 0x228b22, side: THREE.DoubleSide })
+    new THREE.MeshLambertMaterial({
+      map: groundTex,
+      color: 0x228b22,
+      side: THREE.DoubleSide,
+    })
   );
   ground.rotation.x = -Math.PI / 2;
   ground.position.set(0, 0, 0);
   scene.add(ground);
+
+  // Landing zone - subtle lighter patch for approach reference
+  const landingZone = new THREE.Mesh(
+    new THREE.CircleGeometry(LANDING_ZONE_RADIUS, 32),
+    new THREE.MeshLambertMaterial({
+      color: 0x3cb371,
+      side: THREE.DoubleSide,
+    })
+  );
+  landingZone.rotation.x = -Math.PI / 2;
+  landingZone.position.set(LAUNCH_CONFIG.x, 0.02, LAUNCH_CONFIG.z);
+  scene.add(landingZone);
 
   // Launch area - ground-level marker (platform in lucht veroorzaakte donker artifact)
   const launchPlatform = new THREE.Mesh(

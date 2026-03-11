@@ -287,7 +287,8 @@ The project architecture must separate concerns cleanly.
 - **Input layer**: keyboard state, smoothing, mapping to control intentions
 - **UI layer**: HUD, menus, settings, overlays
 - **World layer**: terrain, lift zones, spawn points, landing zones
-- **Audio layer**: wind sound, variometer, brake feedback, landing sound
+- **Audio layer**: wind, variometer, landing sound; shared context
+- **Settings layer**: `modules/settings` – audio toggles, debug mode
 - **Testing layer**: deterministic simulation tests and gameplay verification
 
 ### Hard rules
@@ -379,19 +380,17 @@ The world must affect flight.
 - Wind strength and direction should be tunable
 - Strong wind should alter handling experience
 
-### Thermal requirements
-If thermals are included:
-- They should have spatial zones
-- They should provide vertical uplift
-- They may include radial falloff
-- They may include mild turbulence/noise
-- They should be discoverable and usable by the player
+### Thermal requirements (implemented)
+- Spatial cylindrical zones with radial falloff
+- Soft edge (1.0–1.15× radius) for learnable, forgiving approach
+- Deterministic; no randomness
+- Visual cylinders in scene for discoverability
 
-### Ridge lift requirements
-If ridge lift is included:
-- It should occur when wind meets terrain slope appropriately
-- The player should be rewarded for flying in the correct area
-- It should feel consistent and learnable
+### Ridge lift (implemented)
+- Line-based zones; lift when wind crosses ridge perpendicularly
+- Wind-dependent: no wind = no ridge lift
+- Default ridge: north-south at x = -50, width 55 m
+- Visual ridge wall in scene
 
 ---
 
@@ -416,11 +415,12 @@ The simulator must implement the basic lifecycle of a paraglider session.
 - Ongoing response to controls and environment
 - HUD updates in real time
 
-### Landing requirements
-- Detect contact with terrain
-- Differentiate between smooth landing and hard landing if practical
-- Provide post-flight summary or score
-- Allow restart
+### Landing requirements (implemented)
+- Detect contact with terrain (altitude + speed thresholds)
+- Landing quality: smooth (<1 m/s sink), hard (1–2.5 m/s), rough (>2.5 m/s)
+- Flare zone hint "↓ FLARE" in HUD when altitude < 4 m
+- Post-flight summary with airtime, max altitude, distance, landing quality
+- Restart button; audio stops on pause and landing
 
 ---
 
@@ -469,12 +469,13 @@ The prototype needs a clean, professional HUD.
 - Session state (flying / landed / paused)
 - Optional FPS in debug mode
 
-### Strongly recommended
-- Variometer-style readout
+### Implemented
+- Variometer-style readout (VSI, lift indicator)
 - Minimalist flight instrument layout
-- Pause menu
-- Settings menu
+- Pause overlay (P key or button): Hervat, Opnieuw, Instellingen
+- Settings panel: vario, wind, landing, debug HUD toggles
 - Restart button after landing
+- Controls legend bottom-left
 
 ### UI quality rules
 - Keep the HUD readable and lightweight
@@ -486,19 +487,17 @@ The prototype needs a clean, professional HUD.
 
 ## 17. Audio Requirements
 
-Audio is important for flight feel and should be part of the prototype if feasible.
+Audio supports flight feel and situational awareness.
 
-### Recommended audio systems
-- Wind noise that changes with speed
-- Variometer beeps tied to climb/sink behavior
-- Brake input audio feedback if subtle and useful
-- Landing/touchdown sound
-- UI sounds for menus
+### Implemented audio systems
+- **Wind**: Continuous filtered noise, gain scales with airspeed (2–12 m/s)
+- **Variometer**: Beep on climb (>0.2 m/s); pitch and rate scale with climb; silent on sink
+- **Landing**: One-shot low tone on touchdown; volume/duration scale with landing quality
 
 ### Rules
-- Audio should enhance immersion, not overwhelm the sim
-- Variometer should be useful and not annoying
-- Audio systems should be optional/toggleable in settings
+- Audio stops when paused or landed
+- All audio systems toggleable in settings (vario, wind, landing)
+- Shared AudioContext; resume after user gesture (browser policy)
 
 ---
 
@@ -506,11 +505,11 @@ Audio is important for flight feel and should be part of the prototype if feasib
 
 The simulator needs terrain suitable for paraglider gameplay.
 
-### Prototype world requirements
-- One mountain, ridge, or hillside environment
-- Clear launch area
-- Clear landing zone
-- Terrain shape that supports realistic soaring gameplay
+### Prototype world requirements (implemented)
+- Flat ground with subtle 50 m grid texture for depth perception
+- Landing zone: 70 m radius lighter patch at launch; `isInLandingZone(x,z)` helper
+- Clear launch area (platform)
+- Thermal and ridge visuals for discoverability
 - Good aerial readability from FPV
 
 ### Terrain rules
@@ -578,17 +577,17 @@ Because this is a web-based simulator, performance is a first-class requirement.
 
 Even as a simulator, the experience should be understandable.
 
-### Required
-- Clear controls screen
-- Pause menu
-- Restart flow
-- Basic settings for sensitivity and graphics quality if feasible
+### Implemented
+- Controls legend (bottom-left)
+- Pause overlay: Hervat, Opnieuw, Instellingen
+- Restart flow (from pause and after landing)
+- Settings panel: vario, wind, landing, debug HUD toggles
+- Settings accessible via ⚙ button, pause overlay, or landed overlay
 
-### Recommended
-- Tutorial overlay on first load
-- Toggle for simplified assist mode later
-- Audio volume settings
+### Recommended for later
+- Audio volume sliders
 - Sensitivity settings for input smoothing
+- Settings persistence (localStorage)
 
 ---
 
@@ -675,7 +674,7 @@ When improving flight behavior or tuning, work explicitly from the current imple
 - **Sink polar**: Trim 1.25 m/s, full brake 0.65 m/s, full accel 2.6 m/s. Turn-induced sink (bank factor 0.22).
 - **Bank/turn**: Max bank 35°, coordinated turn (ω = g·tan(bank)/v). Bank rate up 0.95/s, down 1.4/s.
 - **Pitch attitude**: Brake = horizon up, accel = horizon down. Max ±10°, rates 1.1/1.5.
-- **Flare**: Below 4 m, brake ≥ 0.4 reduces sink (flare effect). Flare sink reduction 0.5 m/s.
+- **Flare**: Below 4 m, brake ≥ 0.4 reduces sink (flare effect). Flare sink reduction 0.5 m/s. HUD shows "↓ FLARE" when in zone.
 - **Near-stall**: Brake > 0.92 adds sink penalty (0.4 m/s) for over-braking.
 - **Thermal response**: Vertical speed blend rate 80 for direct lift response.
 - **Input smoothing**: Steer 0.7/0.5, brake/accel 0.8, head look 0.45/0.35.
@@ -707,6 +706,7 @@ A recommended structure:
   /audio
   /game-session
   /scoring
+  /settings
 /lib
 /public
 /tests

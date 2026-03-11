@@ -41,9 +41,15 @@ import {
   STEER_RAMP_UP,
   STEER_RAMP_DOWN,
 } from "@/modules/flight-model/tuning";
-import { createVariometer } from "@/modules/audio";
+import {
+  createVariometer,
+  createWindAudio,
+  playLandingSound,
+} from "@/modules/audio";
+import { DEFAULT_SETTINGS, type SimulatorSettings } from "@/modules/settings";
 import { useInput } from "./InputManager";
 import { Hud } from "./Hud";
+import { SettingsPanel } from "./SettingsPanel";
 
 const SIM_DT = 1 / 60;
 const MAX_HEAD_YAW = Math.PI / 2;
@@ -58,7 +64,7 @@ const HUD_UPDATE_INTERVAL_MS = 50;
  * Simulator shell - FPV-first 3D render container.
  * Simulation loop updates aircraft state per frame; camera follows aircraft.
  */
-function useDebugMode(): boolean {
+function useInitialDebugMode(): boolean {
   if (typeof window === "undefined") return false;
   return new URLSearchParams(window.location.search).get("debug") === "1";
 }
@@ -74,11 +80,16 @@ export function SimulatorShell() {
   const { raw, controls } = useInput();
   const controlsRef = useRef<ControlInputs>(controls);
   const rawRef = useRef(raw);
-  const debugMode = useDebugMode();
-  const debugModeRef = useRef(debugMode);
+  const urlDebug = useInitialDebugMode();
+  const [settings, setSettings] = useState<SimulatorSettings>(() => ({
+    ...DEFAULT_SETTINGS,
+    debugMode: urlDebug,
+  }));
+  const [showSettings, setShowSettings] = useState(false);
+  const settingsRef = useRef(settings);
   useEffect(() => {
-    debugModeRef.current = debugMode;
-  }, [debugMode]);
+    settingsRef.current = settings;
+  }, [settings]);
 
   const [hudData, setHudData] = useState<HudData>(() =>
     mapAircraftToHudData(createLaunchState(), DEFAULT_ENVIRONMENT)
@@ -144,7 +155,14 @@ export function SimulatorShell() {
     const container = containerRef.current;
     if (!container) return;
 
-    const vario = createVariometer({ volume: 0.25, enabled: true });
+    const vario = createVariometer({
+      volume: 0.25,
+      enabled: settingsRef.current.varioEnabled,
+    });
+    const wind = createWindAudio({
+      volume: 0.18,
+      enabled: settingsRef.current.windEnabled,
+    });
 
     const canvas = document.createElement("canvas");
     canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;display:block;";
@@ -255,10 +273,17 @@ export function SimulatorShell() {
       ) {
         varioResumedRef.current = true;
         void vario.resume();
+        void wind.resume();
       }
+      vario.setConfig({ enabled: settingsRef.current.varioEnabled });
+      wind.setConfig({ enabled: settingsRef.current.windEnabled });
       const fs = deriveFlightState(nextState);
-      if (fs === "airborne") {
+      if (isPausedRef.current) {
+        vario.stop();
+        wind.stop();
+      } else if (fs === "airborne") {
         vario.update(nextState.verticalSpeed);
+        wind.update(nextState.airspeed);
         maxAltitudeRef.current = Math.max(
           maxAltitudeRef.current,
           nextState.position.y
@@ -270,15 +295,20 @@ export function SimulatorShell() {
         maxDistanceRef.current = Math.max(maxDistanceRef.current, dist);
       } else {
         vario.stop();
+        wind.stop();
       }
       if (didJustLand(currentState, nextState)) {
         const airtime = (performance.now() - launchTimeRef.current) / 1000;
         const sink = nextState.touchdownSink ?? 2;
+        const quality = classifyLandingQuality(sink);
         setScoreSummary({
           airtimeSeconds: airtime,
           maxAltitude: maxAltitudeRef.current,
           distanceFromLaunch: maxDistanceRef.current,
-          landingQuality: classifyLandingQuality(sink),
+          landingQuality: quality,
+        });
+        playLandingSound(quality, sink, {
+          enabled: settingsRef.current.landingEnabled,
         });
       }
 
@@ -288,7 +318,7 @@ export function SimulatorShell() {
         setHudData(mapAircraftToHudData(nextState, DEFAULT_ENVIRONMENT));
         setFlightState(fs);
         setHudInputDebug(
-          debugModeRef.current
+          settingsRef.current.debugMode
             ? mapInputsToDebug({
                 steerLeft: steerLeftLevelRef.current,
                 steerRight: steerRightLevelRef.current,
@@ -298,7 +328,7 @@ export function SimulatorShell() {
             : null
         );
         setHudEnvDebug(
-          debugModeRef.current
+          settingsRef.current.debugMode
             ? {
                 windX: DEFAULT_ENVIRONMENT.wind.x,
                 windZ: DEFAULT_ENVIRONMENT.wind.z,
@@ -318,7 +348,7 @@ export function SimulatorShell() {
             : null
         );
         setHudTuningDebug(
-          debugModeRef.current
+          settingsRef.current.debugMode
             ? {
                 sinkTrim: SINK_AT_TRIM,
                 bankDeg: (nextState.bank * 180) / Math.PI,
@@ -347,6 +377,7 @@ export function SimulatorShell() {
       cancelAnimationFrame(frameId);
       resizeObserver.disconnect();
       vario.stop();
+      wind.stop();
       scene.renderer.dispose();
       canvas.remove();
       sceneRef.current = null;
@@ -360,22 +391,23 @@ export function SimulatorShell() {
         inputDebug={hudInputDebug}
         envDebug={hudEnvDebug}
         tuningDebug={hudTuningDebug}
-        debugMode={debugMode}
+        debugMode={settings.debugMode}
         isPaused={isPaused}
       />
       <div className="pointer-events-none absolute bottom-4 left-6 font-mono text-[11px] text-white/60">
         ← → sturen | ↑ sneller | ↓ remmen | a/d w/x s kijk | P pauze | C FPV/TPV/Top
       </div>
       <div className="pointer-events-auto absolute right-4 top-4 flex flex-col gap-2">
-        <button
-          type="button"
-          onClick={() => setIsPaused((p) => !p)}
-          className="rounded bg-white/20 px-3 py-1.5 font-mono text-xs font-medium text-white transition hover:bg-white/30"
-          data-testid="pause-button"
-        >
-          {isPaused ? "Hervat" : "Pauze"}
-        </button>
-        <button
+        <div className="relative flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={() => setIsPaused((p) => !p)}
+            className="rounded bg-white/20 px-3 py-1.5 font-mono text-xs font-medium text-white transition hover:bg-white/30"
+            data-testid="pause-button"
+          >
+            {isPaused ? "Hervat" : "Pauze"}
+          </button>
+          <button
           type="button"
           onClick={() =>
             setCameraMode((m) =>
@@ -387,32 +419,67 @@ export function SimulatorShell() {
         >
           {cameraMode === "fpv" ? "TPV" : cameraMode === "tpv" ? "Top" : "FPV"}
         </button>
+          <button
+            type="button"
+            onClick={() => setShowSettings((s) => !s)}
+            className="rounded bg-white/15 px-3 py-1.5 font-mono text-xs text-white/80 transition hover:bg-white/25"
+            data-testid="settings-button"
+          >
+            ⚙
+          </button>
+          {showSettings && !isPaused && flightState !== "landed" && (
+            <div className="absolute right-0 top-full z-10 mt-1">
+              <SettingsPanel
+                settings={settings}
+                onSettingsChange={(u) => setSettings((s) => ({ ...s, ...u }))}
+                onClose={() => setShowSettings(false)}
+                compact
+              />
+            </div>
+          )}
+        </div>
       </div>
       {isPaused && (
         <div
-          className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 backdrop-blur-[2px]"
+          className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/40 backdrop-blur-[2px]"
           data-testid="pause-overlay"
         >
-          <p className="mb-4 font-mono text-lg font-medium text-white/95">
-            Pauze
-          </p>
-          <button
-            type="button"
-            onClick={() => setIsPaused(false)}
-            className="rounded bg-white/20 px-4 py-2 font-mono text-sm text-white transition hover:bg-white/30"
-          >
-            Hervat
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setIsPaused(false);
-              handleRestart();
-            }}
-            className="mt-2 rounded bg-white/15 px-4 py-2 font-mono text-xs text-white/90 transition hover:bg-white/25"
-          >
-            Opnieuw
-          </button>
+          <p className="font-mono text-lg font-medium text-white/95">Pauze</p>
+          <div className="flex flex-col items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsPaused(false)}
+              className="rounded bg-white/20 px-4 py-2 font-mono text-sm text-white transition hover:bg-white/30"
+            >
+              Hervat
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIsPaused(false);
+                handleRestart();
+              }}
+              className="rounded bg-white/15 px-4 py-2 font-mono text-xs text-white/90 transition hover:bg-white/25"
+            >
+              Opnieuw
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowSettings((s) => !s)}
+              className="rounded bg-white/10 px-4 py-2 font-mono text-xs text-white/80 transition hover:bg-white/20"
+              data-testid="settings-toggle"
+            >
+              {showSettings ? "Instellingen verbergen" : "Instellingen"}
+            </button>
+          </div>
+          {showSettings && (
+            <SettingsPanel
+              settings={settings}
+              onSettingsChange={(u) => setSettings((s) => ({ ...s, ...u }))}
+              onClose={() => setShowSettings(false)}
+              compact
+            />
+          )}
         </div>
       )}
       {flightState === "landed" && (
@@ -450,14 +517,32 @@ export function SimulatorShell() {
               <span>Afstand: {formatDistance(scoreSummary.distanceFromLaunch)}</span>
             </div>
           )}
-          <button
-            type="button"
-            onClick={handleRestart}
-            className="rounded bg-white/20 px-6 py-2 font-mono text-sm font-medium text-white transition hover:bg-white/30"
-            data-testid="restart-button"
-          >
-            Opnieuw
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleRestart}
+              className="rounded bg-white/20 px-6 py-2 font-mono text-sm font-medium text-white transition hover:bg-white/30"
+              data-testid="restart-button"
+            >
+              Opnieuw
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowSettings((s) => !s)}
+              className="rounded bg-white/10 px-4 py-2 font-mono text-xs text-white/80 transition hover:bg-white/20"
+              data-testid="settings-toggle-landed"
+            >
+              {showSettings ? "Verbergen" : "Instellingen"}
+            </button>
+          </div>
+          {showSettings && flightState === "landed" && (
+            <SettingsPanel
+              settings={settings}
+              onSettingsChange={(u) => setSettings((s) => ({ ...s, ...u }))}
+              onClose={() => setShowSettings(false)}
+              compact
+            />
+          )}
         </div>
       )}
     </div>

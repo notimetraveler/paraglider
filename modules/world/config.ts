@@ -14,6 +14,9 @@ import type {
 /** Ground level (m) - terrain collision plane */
 export const GROUND_LEVEL = 0;
 
+/** Landing zone radius (m) - visual reference for approach */
+export const LANDING_ZONE_RADIUS = 70;
+
 /** Launch area - spawn position and initial flight setup */
 export const LAUNCH_CONFIG: SpawnPoint & { initialSpeed: number } = {
   x: 0,
@@ -22,6 +25,13 @@ export const LAUNCH_CONFIG: SpawnPoint & { initialSpeed: number } = {
   heading: 0,
   initialSpeed: 8,
 };
+
+/** True if (x,z) is within landing zone (uses LAUNCH_CONFIG as center) */
+export function isInLandingZone(x: number, z: number): boolean {
+  const dx = x - LAUNCH_CONFIG.x;
+  const dz = z - LAUNCH_CONFIG.z;
+  return Math.sqrt(dx * dx + dz * dz) <= LANDING_ZONE_RADIUS;
+}
 
 /** Altitude threshold for landed detection - within this of ground + stopped */
 export const LANDED_ALTITUDE_THRESHOLD = 0.5;

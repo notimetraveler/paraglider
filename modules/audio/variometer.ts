@@ -4,6 +4,8 @@
  * Sink = silence or low slow beep.
  */
 
+import { getAudioContext } from "./context";
+
 /** Base frequency (Hz) - typical vario 400-600 */
 const BASE_FREQ = 500;
 /** Max frequency at strong climb (Hz) */
@@ -30,6 +32,8 @@ export interface Variometer {
   stop(): void;
   /** Resume AudioContext after user gesture (required by browsers) */
   resume(): void;
+  /** Update config at runtime */
+  setConfig(config: Partial<VarioConfig>): void;
 }
 
 /**
@@ -37,19 +41,14 @@ export interface Variometer {
  */
 export function createVariometer(config: Partial<VarioConfig> = {}): Variometer {
   const cfg = { ...DEFAULT_CONFIG, ...config };
-  let audioContext: AudioContext | null = null;
+
+  function setConfig(update: Partial<VarioConfig>): void {
+    Object.assign(cfg, update);
+  }
   let lastBeepTime = 0;
 
-  function getContext(): AudioContext | null {
-    if (typeof window === "undefined") return null;
-    if (!audioContext) {
-      audioContext = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
-    }
-    return audioContext;
-  }
-
   function playBeep(freq: number, durationMs: number, gain: number): void {
-    const ctx = getContext();
+    const ctx = getAudioContext();
     if (!ctx || !cfg.enabled || cfg.volume <= 0) return;
 
     const now = ctx.currentTime;
@@ -72,7 +71,7 @@ export function createVariometer(config: Partial<VarioConfig> = {}): Variometer 
   function update(verticalSpeed: number): void {
     if (!cfg.enabled) return;
 
-    const ctx = getContext();
+    const ctx = getAudioContext();
     if (!ctx) return;
 
     if (verticalSpeed < SINK_THRESHOLD) {
@@ -100,11 +99,9 @@ export function createVariometer(config: Partial<VarioConfig> = {}): Variometer 
   }
 
   async function resume(): Promise<void> {
-    const ctx = getContext();
-    if (ctx?.state === "suspended") {
-      await ctx.resume();
-    }
+    const ctx = getAudioContext();
+    if (ctx?.state === "suspended") await ctx.resume();
   }
 
-  return { update, stop, resume };
+  return { update, stop, resume, setConfig };
 }

@@ -128,6 +128,7 @@ Maintain strict separation between:
 - `modules/audio/`
 - `modules/game-session/`
 - `modules/scoring/`
+- `modules/settings/`
 - `tests/unit/`
 - `tests/integration/`
 - `tests/e2e/`
@@ -152,6 +153,7 @@ Do not substitute:
 - accelerated flight increases speed and sink
 - lift sources can offset sink and permit climb
 - wind affects ground track and approach
+- landing quality (smooth/hard/rough) from touchdown sink rate
 
 ### Required simulation loop behavior
 - use fixed timestep simulation for core flight updates
@@ -165,19 +167,13 @@ Do not substitute:
 
 The world must affect flight.
 
-Prioritize:
-- global wind vector
-- thermals and/or ridge lift
-- terrain interaction
-- launch area and landing zone
+### Implemented
+- **Wind**: Global vector; affects ground track. Default 5 m/s from west.
+- **Thermals**: Cylindrical zones, soft edge (1.0–1.15× radius), deterministic.
+- **Ridge lift**: Line-based zones; lift when wind crosses perpendicularly. Default ridge at x = -50.
+- **Ground**: 50 m grid texture, 70 m landing zone at launch.
 
-Environmental systems should be:
-- tunable
-- understandable
-- testable
-- performance-aware
-
-Avoid overcomplicated weather systems before the fundamentals are solid.
+Environmental systems should be tunable, understandable, testable, and performance-aware.
 
 ---
 
@@ -205,12 +201,12 @@ This is a web simulator. Performance is a product feature.
 Aim for a professional prototype aesthetic.
 
 Prioritize:
-- terrain readability from the air
+- terrain readability from the air (50 m grid, landing zone)
 - a clear horizon and sky
 - atmospheric depth
 - strong sensation of movement and altitude
 - restrained but useful HUD
-- a clean settings/pause flow
+- clean settings/pause flow (⚙ button, pause overlay, landed overlay)
 
 Avoid:
 - cluttered UI
@@ -222,15 +218,14 @@ Avoid:
 
 ## Audio Direction
 
-Audio should support flight feel and situational awareness.
+Audio supports flight feel and situational awareness.
 
-Prioritize when available:
-- wind audio tied to speed
-- variometer cues
-- landing/touchdown feedback
-- lightweight UI sounds
+### Implemented
+- **Wind**: Filtered noise; gain scales with airspeed (2–12 m/s).
+- **Variometer**: Beep on climb; pitch/rate scale with climb; silent on sink.
+- **Landing**: One-shot low tone; volume/duration scale with landing quality.
 
-Audio must remain optional and adjustable in settings.
+All audio toggleable in settings. Audio stops when paused or landed. Shared AudioContext; resume after user gesture.
 
 ---
 
@@ -266,7 +261,9 @@ Centralize tunable values:
 - wind strength
 - thermal strength
 - ridge lift behavior
-- landing thresholds
+- landing thresholds (smooth <1 m/s, hard 1–2.5 m/s, rough >2.5 m/s)
+- flare zone (4 m, brake ≥ 0.4)
+- landing zone radius (70 m)
 
 ---
 
