@@ -46,7 +46,12 @@ import {
   createWindAudio,
   playLandingSound,
 } from "@/modules/audio";
-import { DEFAULT_SETTINGS, type SimulatorSettings } from "@/modules/settings";
+import {
+  DEFAULT_SETTINGS,
+  loadSettings,
+  saveSettings,
+  type SimulatorSettings,
+} from "@/modules/settings";
 import { useInput } from "./InputManager";
 import { Hud } from "./Hud";
 import { SettingsPanel } from "./SettingsPanel";
@@ -91,6 +96,19 @@ export function SimulatorShell() {
     settingsRef.current = settings;
   }, [settings]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    queueMicrotask(() => {
+      const loaded = loadSettings(window.localStorage);
+      setSettings({ ...loaded, debugMode: loaded.debugMode || urlDebug });
+    });
+  }, [urlDebug]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    saveSettings(window.localStorage, settings);
+  }, [settings]);
+
   const [hudData, setHudData] = useState<HudData>(() =>
     mapAircraftToHudData(createLaunchState(), DEFAULT_ENVIRONMENT)
   );
@@ -106,8 +124,10 @@ export function SimulatorShell() {
     isPausedRef.current = isPaused;
     cameraModeRef.current = cameraMode;
   }, [isPaused, cameraMode]);
-  const lastHudUpdateRef = useRef(0);
+    const lastHudUpdateRef = useRef(0);
   const varioResumedRef = useRef(false);
+  const lastVarioConfigRef = useRef({ enabled: true, volume: 0.25 });
+  const lastWindConfigRef = useRef({ enabled: true, volume: 0.18 });
   const launchTimeRef = useRef(0);
   const maxAltitudeRef = useRef(0);
   const maxDistanceRef = useRef(0);
@@ -156,11 +176,11 @@ export function SimulatorShell() {
     if (!container) return;
 
     const vario = createVariometer({
-      volume: 0.25,
+      volume: settingsRef.current.varioVolume,
       enabled: settingsRef.current.varioEnabled,
     });
     const wind = createWindAudio({
-      volume: 0.18,
+      volume: settingsRef.current.windVolume,
       enabled: settingsRef.current.windEnabled,
     });
 
@@ -178,6 +198,12 @@ export function SimulatorShell() {
     maxAltitudeRef.current = 0;
     maxDistanceRef.current = 0;
 
+    const inputsCache = {
+      steerLeft: 0,
+      steerRight: 0,
+      brake: 0,
+      acceleratedFlight: 0,
+    };
     let frameId: number;
     function animate() {
       frameId = requestAnimationFrame(animate);
@@ -207,7 +233,8 @@ export function SimulatorShell() {
       const lookBlend = Math.min(1, lookRate * SIM_DT);
       headYaw += (targetYaw - headYaw) * lookBlend;
       headPitch += (targetPitch - headPitch) * lookBlend;
-      headLookRef.current = { yaw: headYaw, pitch: headPitch };
+      headLookRef.current.yaw = headYaw;
+      headLookRef.current.pitch = headPitch;
 
       if (raw.brake > 0) {
         brakeLevel = Math.min(1, brakeLevel + BRAKE_ACCEL_RAMP_RATE * SIM_DT);
@@ -239,18 +266,14 @@ export function SimulatorShell() {
       steerRightLevelRef.current = steerRightLevel;
 
       const currentState = stateRef.current;
+      inputsCache.steerLeft = steerLeftLevel;
+      inputsCache.steerRight = steerRightLevel;
+      inputsCache.brake = brakeLevel;
+      inputsCache.acceleratedFlight = accelLevel;
       const nextState = isPausedRef.current
         ? currentState
         : simulateStep(
-            {
-              ...currentState,
-              inputs: {
-                steerLeft: steerLeftLevel,
-                steerRight: steerRightLevel,
-                brake: brakeLevel,
-                acceleratedFlight: accelLevel,
-              },
-            },
+            { ...currentState, inputs: inputsCache },
             SIM_DT,
             DEFAULT_ENVIRONMENT
           );
@@ -275,8 +298,25 @@ export function SimulatorShell() {
         void vario.resume();
         void wind.resume();
       }
-      vario.setConfig({ enabled: settingsRef.current.varioEnabled });
-      wind.setConfig({ enabled: settingsRef.current.windEnabled });
+      const s = settingsRef.current;
+      const lastVario = lastVarioConfigRef.current;
+      if (
+        lastVario.enabled !== s.varioEnabled ||
+        lastVario.volume !== s.varioVolume
+      ) {
+        lastVario.enabled = s.varioEnabled;
+        lastVario.volume = s.varioVolume;
+        vario.setConfig(lastVario);
+      }
+      const lastWind = lastWindConfigRef.current;
+      if (
+        lastWind.enabled !== s.windEnabled ||
+        lastWind.volume !== s.windVolume
+      ) {
+        lastWind.enabled = s.windEnabled;
+        lastWind.volume = s.windVolume;
+        wind.setConfig(lastWind);
+      }
       const fs = deriveFlightState(nextState);
       if (isPausedRef.current) {
         vario.stop();
@@ -309,6 +349,7 @@ export function SimulatorShell() {
         });
         playLandingSound(quality, sink, {
           enabled: settingsRef.current.landingEnabled,
+          volume: settingsRef.current.landingVolume,
         });
       }
 

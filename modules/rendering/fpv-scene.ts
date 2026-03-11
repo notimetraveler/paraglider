@@ -244,6 +244,9 @@ const TPV_HEIGHT = 6;
 /** Top view: height above aircraft (m) */
 const TOP_VIEW_HEIGHT = 120;
 
+/** Reusable Z-axis for camera roll - avoids per-frame allocation */
+const AXIS_Z = new THREE.Vector3(0, 0, -1);
+
 /**
  * Sync camera and paraglider from aircraft state.
  * FPV: pilot eye view with head look.
@@ -293,7 +296,7 @@ export function syncCameraFromAircraft(
       eyeY - sinPitch * lookDistance,
       position.z + forwardZ * cosPitch * lookDistance
     );
-    scene.camera.rotateOnAxis(new THREE.Vector3(0, 0, -1), -bank);
+    scene.camera.rotateOnAxis(AXIS_Z, -bank);
   } else if (cameraMode === "top") {
     // Top view: recht van boven, kijk naar grond
     scene.camera.fov = BASE_FOV;
