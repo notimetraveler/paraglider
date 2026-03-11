@@ -34,13 +34,27 @@ export function Hud({
   const showInputDebug = debugMode && inputDebug;
   const showEnvDebug = debugMode && envDebug;
 
-  const inThermal = data.thermalLift > 0.1;
+  const inThermal = data.thermalLift > 0.05;
+  const thermalStrength = Math.min(1, data.thermalLift / 2);
 
   return (
     <div
       className="pointer-events-none absolute inset-0 flex flex-col justify-between"
       data-testid="hud"
     >
+      {/* Duidelijke oranje gloed: onmiskenbaar wanneer je in thermiek zit */}
+      {inThermal && (
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background: `radial-gradient(ellipse at center, rgba(251, 146, 60, ${0.2 + thermalStrength * 0.25}) 0%, rgba(234, 88, 12, ${0.1 + thermalStrength * 0.15}) 60%, transparent 100%)`,
+            boxShadow: "inset 0 0 150px rgba(251, 146, 60, 0.25)",
+            border: "5px solid rgba(251, 146, 60, 0.5)",
+          }}
+          data-testid="thermal-indicator"
+          aria-hidden
+        />
+      )}
       {/* Top: heading / compass + wind + pause indicator */}
       <div className="flex flex-col items-center gap-2 pt-6">
         {isPaused && (

@@ -112,6 +112,10 @@ export function SimulatorShell() {
         e.preventDefault();
         setIsPaused((p) => !p);
       }
+      if (e.code === "KeyC" && !e.repeat) {
+        e.preventDefault();
+        setCameraMode((m) => (m === "fpv" ? "tpv" : "fpv"));
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -325,7 +329,7 @@ export function SimulatorShell() {
         isPaused={isPaused}
       />
       <div className="pointer-events-none absolute bottom-4 left-6 font-mono text-[11px] text-white/60">
-        ← → sturen | ↑ sneller | ↓ remmen | a/d w/x s kijk | P pauze
+        ← → sturen | ↑ sneller | ↓ remmen | a/d w/x s kijk | P pauze | C FPV/TPV
       </div>
       <div className="pointer-events-auto absolute right-4 top-4 flex flex-col gap-2">
         <button

@@ -25,7 +25,8 @@ const FOV_SPEED_RANGE = 4;
 export function createFpvScene(canvas: HTMLCanvasElement): FpvScene {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x87ceeb); // Sky blue
-  scene.fog = new THREE.Fog(0x87ceeb, 400, 1200);
+  // Fog ver weg: thermiekzuilen blijven zichtbaar als je omdraait
+  scene.fog = new THREE.Fog(0x87ceeb, 900, 2200);
 
   const aspect = window.innerWidth / window.innerHeight;
   const camera = new THREE.PerspectiveCamera(BASE_FOV, aspect, 0.1, 5000);
@@ -70,10 +71,10 @@ export function createFpvScene(canvas: HTMLCanvasElement): FpvScene {
       new THREE.MeshBasicMaterial({
         color: 0xff7700,
         transparent: true,
-        opacity: 0.4,
-        alphaTest: 0.3,
+        opacity: 0.6,
+        alphaTest: 0.2,
         depthWrite: true,
-        side: THREE.DoubleSide,
+        fog: false,
       })
     );
     thermalCylinder.position.set(t.x, visualHeight / 2, t.z);

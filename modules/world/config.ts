@@ -29,11 +29,11 @@ export const DEFAULT_WIND: WindVector = {
   z: 0,
 };
 
-/** Default thermals - groot genoeg om soepel te cirkelen */
+/** Default thermals - sterk genoeg om goed hoogte te maken */
 export const DEFAULT_THERMALS: ThermalZone[] = [
-  { x: 60, z: 100, radius: 80, strength: 3.8 },
-  { x: -80, z: 250, radius: 75, strength: 3.2 },
-  { x: 120, z: 350, radius: 70, strength: 2.8 },
+  { x: 60, z: 100, radius: 80, strength: 5.2 },
+  { x: -80, z: 250, radius: 75, strength: 4.8 },
+  { x: 120, z: 350, radius: 70, strength: 4.4 },
 ];
 
 /** Default environment */

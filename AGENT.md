@@ -67,6 +67,8 @@ The simulator uses the following keyboard controls as the default control scheme
 | **W** | Look up | Smooth ramp; returns to center when released |
 | **X** | Look down | Smooth ramp; returns to center when released |
 | **S** | Look forward (reset view) | Smoothly returns head look to center |
+| **P** | Pause / Resume | Toggles pause overlay |
+| **C** | FPV / TPV | Toggles first-person / third-person camera |
 
 ### 4.2 Input Smoothing
 
