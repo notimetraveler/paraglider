@@ -10,6 +10,8 @@ export interface HudData {
   windZ: number;
   /** Thermal lift at current position (m/s) */
   thermalLift: number;
+  /** Horizontal distance to LZ center (m) - shown when approaching */
+  distanceToLz?: number;
 }
 
 /** Smoothed control inputs for debug display */

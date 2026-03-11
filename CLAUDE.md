@@ -169,8 +169,8 @@ The world must affect flight.
 
 ### Implemented
 - **Wind**: Global vector; affects ground track. Default 5 m/s from west.
-- **Thermals**: Cylindrical zones, soft edge (1.0–1.15× radius), deterministic.
-- **Ridge lift**: Line-based zones; lift when wind crosses perpendicularly. Default ridge at x = -50.
+- **Thermals**: Cylindrical zones, soft edge (1.0–1.15× radius), deterministic. Starter thermal near launch; others downwind.
+- **Ridge lift**: Line-based zones; lift when wind crosses perpendicularly. Default ridge at x = 85 (downwind of launch).
 - **Ground**: 50 m grid texture, 70 m landing zone at launch.
 
 Environmental systems should be tunable, understandable, testable, and performance-aware.
@@ -225,7 +225,7 @@ Audio supports flight feel and situational awareness.
 - **Variometer**: Beep on climb; pitch/rate scale with climb; silent on sink.
 - **Landing**: One-shot low tone; volume/duration scale with landing quality.
 
-All audio toggleable in settings. Audio stops when paused or landed. Shared AudioContext; resume after user gesture.
+All audio toggleable in settings; volume sliders for vario, wind, landing. Settings persist via localStorage. Audio stops when paused or landed. Shared AudioContext; resume after user gesture.
 
 ---
 
@@ -357,7 +357,7 @@ Keep debug tools behind explicit flags or debug mode.
 
 ## Deployment Direction
 
-The simulator must remain compatible with Next.js deployment on Vercel.
+The simulator deploys to Vercel with the default Next.js preset. See `docs/DEPLOY.md`.
 
 ### Rules
 - keep browser-only code properly isolated

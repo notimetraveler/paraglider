@@ -99,14 +99,22 @@ export function SimulatorShell() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     queueMicrotask(() => {
-      const loaded = loadSettings(window.localStorage);
-      setSettings({ ...loaded, debugMode: loaded.debugMode || urlDebug });
+      try {
+        const loaded = loadSettings(window.localStorage);
+        setSettings({ ...loaded, debugMode: loaded.debugMode || urlDebug });
+      } catch {
+        setSettings({ ...DEFAULT_SETTINGS, debugMode: urlDebug });
+      }
     });
   }, [urlDebug]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    saveSettings(window.localStorage, settings);
+    try {
+      saveSettings(window.localStorage, settings);
+    } catch {
+      // localStorage disabled, quota exceeded, or private browsing
+    }
   }, [settings]);
 
   const [hudData, setHudData] = useState<HudData>(() =>

@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 test("app loads", async ({ page }) => {
   await page.goto("/");
-  await expect(page).toHaveTitle(/Create Next App|paraglider/i);
+  await expect(page).toHaveTitle(/Paraglider Simulator/i);
 });
 
 test("simulator route renders", async ({ page }) => {

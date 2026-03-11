@@ -9,13 +9,10 @@ export default function Home() {
             Paraglider Simulator
           </h1>
           <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            First-person paraglider flight simulator.{" "}
-            <Link
-              href="/simulator"
-              className="font-medium text-zinc-950 dark:text-zinc-50 underline"
-            >
-              Launch Simulator
-            </Link>
+            First-person paraglider flight simulator. Drift with wind, find thermals and ridge lift, land in the zone.
+          </p>
+          <p className="max-w-md text-sm leading-6 text-zinc-500 dark:text-zinc-500">
+            ← → steer · ↑ accelerate · ↓ brake · P pause · C camera
           </p>
         </div>
         <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">

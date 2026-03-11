@@ -1,5 +1,11 @@
 # AGENT.md
 
+## Current implementation state (as of production pass)
+
+The simulator is a deployable prototype with: first-person flight, wind/thermals/ridge lift, persistent settings (localStorage), volume sliders, HUD with LZ distance, pause/restart/landing flow, E2E tests, and performance optimizations. See `docs/ARCHITECTURE.md` and `docs/TEST_STRATEGY.md` for module and test coverage.
+
+---
+
 ## 1. Project Mission
 
 Build a professional-quality, browser-based, first-person paraglider flight simulator using Next.js and TypeScript, intended to run smoothly on the web and to be deployed on Vercel.
@@ -389,7 +395,7 @@ The world must affect flight.
 ### Ridge lift (implemented)
 - Line-based zones; lift when wind crosses ridge perpendicularly
 - Wind-dependent: no wind = no ridge lift
-- Default ridge: north-south at x = -50, width 55 m
+- Default ridge: north-south at x = 85 (downwind of launch), width 50 m
 - Visual ridge wall in scene
 
 ---
@@ -581,13 +587,9 @@ Even as a simulator, the experience should be understandable.
 - Controls legend (bottom-left)
 - Pause overlay: Hervat, Opnieuw, Instellingen
 - Restart flow (from pause and after landing)
-- Settings panel: vario, wind, landing, debug HUD toggles
+- Settings panel: vario, wind, landing, debug HUD toggles; volume sliders
 - Settings accessible via ⚙ button, pause overlay, or landed overlay
-
-### Recommended for later
-- Audio volume sliders
-- Sensitivity settings for input smoothing
-- Settings persistence (localStorage)
+- Settings persistence (localStorage); fallback to defaults if unavailable
 
 ---
 

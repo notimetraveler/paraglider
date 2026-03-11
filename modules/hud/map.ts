@@ -1,6 +1,7 @@
 import type { AircraftState } from "@/modules/flight-model";
 import {
   GROUND_LEVEL,
+  LAUNCH_CONFIG,
   LANDED_ALTITUDE_THRESHOLD,
   LANDED_SPEED_THRESHOLD,
 } from "@/modules/world/config";
@@ -32,6 +33,13 @@ export function mapAircraftToHudData(
     env.wind
   );
 
+  const dx = state.position.x - LAUNCH_CONFIG.x;
+  const dz = state.position.z - LAUNCH_CONFIG.z;
+  const distanceToLz =
+    state.position.y < 150 && state.position.y > GROUND_LEVEL
+      ? Math.sqrt(dx * dx + dz * dz)
+      : undefined;
+
   return {
     airspeed: state.airspeed,
     altitude: state.position.y,
@@ -41,6 +49,7 @@ export function mapAircraftToHudData(
     windX: env.wind.x,
     windZ: env.wind.z,
     thermalLift: thermalLift + ridgeLift,
+    ...(distanceToLz !== undefined && { distanceToLz }),
   };
 }
 

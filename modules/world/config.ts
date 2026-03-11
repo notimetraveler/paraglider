@@ -39,27 +39,34 @@ export const LANDED_ALTITUDE_THRESHOLD = 0.5;
 /** Speed threshold (m/s) - below this when on ground = landed */
 export const LANDED_SPEED_THRESHOLD = 0.5;
 
-/** Default wind - from west (negative X) at 5 m/s - clearly noticeable drift */
+/** Default wind - from west (negative X) at 5 m/s - drift east, ridge on drift path */
 export const DEFAULT_WIND: WindVector = {
   x: -5,
   z: 0,
 };
 
-/** Default thermals - sterk genoeg om goed hoogte te maken */
+/**
+ * Default thermals - coherent with wind drift.
+ * Starter thermal near launch for first minutes; others downwind.
+ * Strengths balanced so lift is rewarding but sink still matters (~2–3 m/s core).
+ */
 export const DEFAULT_THERMALS: ThermalZone[] = [
-  { x: 60, z: 100, radius: 80, strength: 5.2 },
-  { x: -80, z: 250, radius: 75, strength: 4.8 },
-  { x: 120, z: 350, radius: 70, strength: 4.4 },
+  { x: 35, z: 45, radius: 55, strength: 2.8 },
+  { x: 90, z: 120, radius: 65, strength: 2.5 },
+  { x: 140, z: 280, radius: 60, strength: 2.2 },
 ];
 
-/** Default ridge - north-south, wind from west crosses perpendicular */
+/**
+ * Default ridge - downwind of launch so player encounters it when drifting east.
+ * North-south line at x=85; wind from west crosses perpendicular.
+ */
 export const DEFAULT_RIDGE: RidgeLiftZone = {
-  x1: -50,
-  z1: 50,
-  x2: -50,
-  z2: 400,
-  width: 55,
-  strength: 2.2,
+  x1: 85,
+  z1: 60,
+  x2: 85,
+  z2: 380,
+  width: 50,
+  strength: 1.5,
 };
 
 /** Default environment */

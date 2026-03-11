@@ -109,6 +109,21 @@ describe("hud map", () => {
       const hud = mapAircraftToHudData(state, ZERO_ENVIRONMENT);
       expect(hud.state).toBe("landed");
     });
+    it("includes distanceToLz when altitude 0–150 m", () => {
+      const state = createInitialAircraftState({
+        position: { x: 50, y: 80, z: 30 },
+      });
+      const hud = mapAircraftToHudData(state, ZERO_ENVIRONMENT);
+      expect(hud.distanceToLz).toBeDefined();
+      expect(hud.distanceToLz).toBeCloseTo(Math.sqrt(50 * 50 + 30 * 30), 0);
+    });
+    it("omits distanceToLz when altitude >= 150 m", () => {
+      const state = createInitialAircraftState({
+        position: { x: 50, y: 200, z: 30 },
+      });
+      const hud = mapAircraftToHudData(state, ZERO_ENVIRONMENT);
+      expect(hud.distanceToLz).toBeUndefined();
+    });
   });
 
   describe("mapInputsToDebug", () => {

@@ -96,7 +96,7 @@ export function Hud({
 
       {/* Center: main instruments - bottom-left, compact */}
       <div className="pb-8 pl-6">
-        <div className="flex flex-col gap-0.5 font-mono text-sm">
+          <div className="flex flex-col gap-0.5 font-mono text-sm">
           <div className="flex items-baseline gap-3">
             <span className="text-white/60">SPD</span>
             <span className="tabular-nums font-semibold text-white">
@@ -111,6 +111,14 @@ export function Hud({
             </span>
             <span className="text-white/50">m</span>
           </div>
+          {data.distanceToLz !== undefined && (
+            <div className="flex items-baseline gap-3">
+              <span className="text-white/60">LZ</span>
+              <span className="tabular-nums font-semibold text-sky-300">
+                {Math.round(data.distanceToLz)} m
+              </span>
+            </div>
+          )}
           <div className="flex items-baseline gap-3">
             <span className="text-white/60">VSI</span>
             <span

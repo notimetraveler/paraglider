@@ -3,7 +3,32 @@ import {
   isInLandingZone,
   LANDING_ZONE_RADIUS,
   LAUNCH_CONFIG,
+  DEFAULT_THERMALS,
+  DEFAULT_RIDGE,
+  DEFAULT_WIND,
 } from "@/modules/world/config";
+
+describe("world layout", () => {
+  it("ridge is downwind of launch (wind pushes toward ridge)", () => {
+    expect(DEFAULT_WIND.x).toBeLessThan(0);
+    expect(DEFAULT_RIDGE.x1).toBeGreaterThan(LAUNCH_CONFIG.x);
+  });
+
+  it("starter thermal is near launch for first minutes", () => {
+    const starter = DEFAULT_THERMALS[0];
+    const dist = Math.sqrt(
+      (starter.x - LAUNCH_CONFIG.x) ** 2 + (starter.z - LAUNCH_CONFIG.z) ** 2
+    );
+    expect(dist).toBeLessThan(80);
+  });
+
+  it("thermal strengths are balanced (sink still matters)", () => {
+    for (const t of DEFAULT_THERMALS) {
+      expect(t.strength).toBeGreaterThan(1);
+      expect(t.strength).toBeLessThan(4);
+    }
+  });
+});
 
 describe("landing zone", () => {
   it("returns true when inside radius", () => {
