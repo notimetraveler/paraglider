@@ -62,6 +62,16 @@ describe("game session", () => {
       });
       expect(deriveFlightState(state)).toBe("landed");
     });
+
+    it("returns crashed when state.crashed is true", () => {
+      const state = createInitialAircraftState({
+        position: { x: 0, y: GROUND_LEVEL, z: 0 },
+        velocity: { x: 0, y: 0, z: 0 },
+        airspeed: 0,
+        crashed: true,
+      });
+      expect(deriveFlightState(state)).toBe("crashed");
+    });
   });
 
   describe("didJustLand", () => {

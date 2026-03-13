@@ -17,13 +17,15 @@ export type GroundHeightFn = (x: number, z: number) => number;
 
 /**
  * Derive flight state from aircraft state.
- * airborne: flying above ground
+ * crashed: hit obstacle (tree/rock)
  * landed: on ground with negligible speed
+ * airborne: flying
  */
 export function deriveFlightState(
   state: AircraftState,
   getGroundHeight?: GroundHeightFn
 ): FlightState {
+  if (state.crashed) return "crashed";
   if (isLanded(state, getGroundHeight)) return "landed";
   return "airborne";
 }

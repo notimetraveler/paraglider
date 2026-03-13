@@ -5,7 +5,7 @@ import {
   LANDED_ALTITUDE_THRESHOLD,
   LANDED_SPEED_THRESHOLD,
 } from "@/modules/world/config";
-import type { Environment } from "@/modules/world/types";
+import type { Environment, ObstacleCollider } from "@/modules/world/types";
 import { sampleTerrainState } from "@/modules/world/terrain";
 import { getThermalLift, getRidgeLift } from "@/modules/world/lift";
 import {
@@ -40,6 +40,13 @@ interface TerrainCollisionHit {
   x: number;
   y: number;
   z: number;
+}
+
+interface ObstacleCollisionHit {
+  x: number;
+  y: number;
+  z: number;
+  t: number;
 }
 
 function lerp(a: number, b: number, t: number): number {
@@ -118,6 +125,80 @@ function resolveTerrainCollision(
   }
 
   return undefined;
+}
+
+function isInsideObstacle(
+  x: number,
+  y: number,
+  z: number,
+  collider: ObstacleCollider
+): boolean {
+  const dx = x - collider.x;
+  const dz = z - collider.z;
+  const withinRadius = dx * dx + dz * dz <= collider.radius * collider.radius;
+  const withinHeight = y >= collider.y && y <= collider.y + collider.height;
+  return withinRadius && withinHeight;
+}
+
+function resolveObstacleCollision(
+  start: { x: number; y: number; z: number },
+  end: { x: number; y: number; z: number },
+  colliders?: ObstacleCollider[]
+): ObstacleCollisionHit | undefined {
+  if (!colliders?.length) return undefined;
+
+  const segmentLength = Math.hypot(
+    end.x - start.x,
+    end.y - start.y,
+    end.z - start.z
+  );
+  const steps = Math.max(1, Math.ceil(segmentLength / COLLISION_SWEEP_STEP_M));
+  let earliestHit: ObstacleCollisionHit | undefined;
+
+  for (const collider of colliders) {
+    let safeT = 0;
+    for (let step = 1; step <= steps; step++) {
+      const t = step / steps;
+      const sampleX = lerp(start.x, end.x, t);
+      const sampleY = lerp(start.y, end.y, t);
+      const sampleZ = lerp(start.z, end.z, t);
+
+      if (isInsideObstacle(sampleX, sampleY, sampleZ, collider)) {
+        let low = safeT;
+        let high = t;
+
+        for (let i = 0; i < COLLISION_BINARY_SEARCH_STEPS; i++) {
+          const mid = (low + high) / 2;
+          const midX = lerp(start.x, end.x, mid);
+          const midY = lerp(start.y, end.y, mid);
+          const midZ = lerp(start.z, end.z, mid);
+
+          if (isInsideObstacle(midX, midY, midZ, collider)) {
+            high = mid;
+          } else {
+            low = mid;
+          }
+        }
+
+        const hitT = low;
+        const hit = {
+          x: lerp(start.x, end.x, hitT),
+          y: lerp(start.y, end.y, hitT),
+          z: lerp(start.z, end.z, hitT),
+          t: hitT,
+        };
+
+        if (!earliestHit || hit.t < earliestHit.t) {
+          earliestHit = hit;
+        }
+        break;
+      }
+
+      safeT = t;
+    }
+  }
+
+  return earliestHit;
 }
 
 /**
@@ -240,6 +321,11 @@ export function simulateStep(
     { x: newX, y: newY, z: newZ },
     env.getGroundHeight
   );
+  const obstacleHit = resolveObstacleCollision(
+    position,
+    { x: newX, y: newY, z: newZ },
+    env.obstacleColliders
+  );
 
   if (collisionHit) {
     touchdownSink = Math.max(0, -newVelY);
@@ -249,6 +335,27 @@ export function simulateStep(
     newVelY = 0;
     newVelX = 0;
     newVelZ = 0;
+  } else if (obstacleHit) {
+    touchdownSink = Math.max(0, -newVelY);
+    newX = obstacleHit.x;
+    newY = obstacleHit.y;
+    newZ = obstacleHit.z;
+    newVelY = 0;
+    newVelX = 0;
+    newVelZ = 0;
+    return {
+      ...state,
+      crashed: true,
+      touchdownSink,
+      position: { x: newX, y: newY, z: newZ },
+      velocity: { x: 0, y: 0, z: 0 },
+      heading: newHeading,
+      bank: newBank,
+      pitchAttitude: newPitchAttitude,
+      turnRate,
+      airspeed: 0,
+      verticalSpeed: 0,
+    };
   } else {
     const nextTerrainSample = sampleTerrainState({
       x: newX,

@@ -34,6 +34,16 @@ export interface RidgeLiftZone {
   strength: number;
 }
 
+export interface ObstacleCollider {
+  id: string;
+  kind: "tree" | "rock";
+  x: number;
+  y: number;
+  z: number;
+  radius: number;
+  height: number;
+}
+
 /** Environment state - wind and lift zones */
 export interface Environment {
   wind: WindVector;
@@ -41,4 +51,5 @@ export interface Environment {
   ridgeLift: RidgeLiftZone[];
   /** Optional terrain height (m). If not set, uses flat ground at 0. */
   getGroundHeight?: (x: number, z: number) => number;
+  obstacleColliders?: ObstacleCollider[];
 }

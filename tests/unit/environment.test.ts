@@ -64,6 +64,57 @@ describe("wind influence", () => {
     expect(a.position.y).toBe(b.position.y);
     expect(a.position.z).toBe(b.position.z);
   });
+
+  it("same input different wind yields different ground track (step 3)", () => {
+    const noWind: Environment = {
+      wind: { x: 0, z: 0 },
+      thermals: [],
+      ridgeLift: [],
+    };
+    const windEast: Environment = {
+      wind: { x: 6, z: 0 },
+      thermals: [],
+      ridgeLift: [],
+    };
+    const state = createInitialAircraftState({
+      position: { x: 0, y: 100, z: 0 },
+      heading: 0,
+      velocity: { x: 0, y: 0, z: 8 },
+      airspeed: 8,
+    });
+    const inputs = { steerLeft: 0, steerRight: 0, brake: 0, acceleratedFlight: 0 };
+    let s0 = state;
+    let sEast = { ...state, inputs };
+    for (let i = 0; i < 120; i++) {
+      s0 = simulateStep({ ...s0, inputs }, 1 / 60, noWind);
+      sEast = simulateStep({ ...sEast, inputs }, 1 / 60, windEast);
+    }
+    expect(sEast.position.x).toBeGreaterThan(s0.position.x);
+    expect(sEast.position.z).toBeCloseTo(s0.position.z, 0);
+  });
+
+  it("ground velocity equals air velocity plus wind (airspeed unchanged by wind)", () => {
+    const wind = { x: 4, z: 2 };
+    const env: Environment = {
+      wind,
+      thermals: [],
+      ridgeLift: [],
+    };
+    const state = createInitialAircraftState({
+      position: { x: 0, y: 50, z: 0 },
+      heading: 0,
+      airspeed: 8,
+      velocity: { x: 0, y: -1, z: 8 },
+    });
+    const next = simulateStep(
+      { ...state, inputs: { steerLeft: 0, steerRight: 0, brake: 0, acceleratedFlight: 0 } },
+      1 / 60,
+      env
+    );
+    expect(next.airspeed).toBeCloseTo(8, 1);
+    expect(next.velocity.x).toBeCloseTo(4, 1);
+    expect(next.velocity.z).toBeCloseTo(10, 1);
+  });
 });
 
 describe("thermal lift", () => {

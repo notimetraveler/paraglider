@@ -22,6 +22,8 @@ export interface AircraftState {
   inputs: PilotInputs;
   /** Sink rate at touchdown (m/s, positive = downward) - set only on landing frame */
   touchdownSink?: number;
+  /** True when contact was with obstacle (tree/rock) — crash, score 0 */
+  crashed?: boolean;
 }
 
 /** Create initial aircraft state at spawn (launch position) */

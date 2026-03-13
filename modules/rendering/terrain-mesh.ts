@@ -9,6 +9,7 @@ import {
   terrainHeightAt,
   getBiomeWeights,
 } from "@/modules/world/terrain";
+import { getTerrainDetailTexture } from "@/modules/rendering/world-kit";
 
 /** Terrain extent (m) - covers flight path */
 export const TERRAIN_MIN_X = -250;
@@ -32,19 +33,19 @@ export function getTerrainWorldSamplePosition(
   };
 }
 
-/** Alpine color palette - docs/ART_DIRECTION.md */
+/** Alpine color palette — brighter for alpine morning clarity (ART_DIRECTION) */
 const COLORS = {
-  grass: new THREE.Color(0x3d6b2f),
-  grassLight: new THREE.Color(0x4a7c3a),
-  earth: new THREE.Color(0x6b5344),
-  earthLight: new THREE.Color(0x7d6354),
-  rock: new THREE.Color(0x5c5c5c),
-  rockLight: new THREE.Color(0x787878),
-  scree: new THREE.Color(0x6b6b5c),
-  screeLight: new THREE.Color(0x8a8a78),
+  grass: new THREE.Color(0x45783a),
+  grassLight: new THREE.Color(0x549044),
+  earth: new THREE.Color(0x7a6048),
+  earthLight: new THREE.Color(0x8e7058),
+  rock: new THREE.Color(0x6a6a62),
+  rockLight: new THREE.Color(0x888880),
+  scree: new THREE.Color(0x78786a),
+  screeLight: new THREE.Color(0x969682),
 } as const;
 
-/** Blend vertex color from biome weights, height, and slope */
+/** Blend vertex color from biome weights, height, and slope — clearer zone contrast */
 function getBlendedBiomeColor(
   x: number,
   z: number,
@@ -52,13 +53,13 @@ function getBlendedBiomeColor(
   slope: number
 ): THREE.Color {
   const w = getBiomeWeights(x, z);
-  const sunFactor = 0.88 + slope * 0.12;
-  const elevFactor = Math.min(1, height / 90) * 0.12 + 0.88;
+  const sunFactor = 0.9 + slope * 0.1;
+  const elevFactor = Math.min(1, height / 90) * 0.14 + 0.86;
 
-  const grassC = COLORS.grass.clone().lerp(COLORS.grassLight, sunFactor * elevFactor * 0.35);
-  const earthC = COLORS.earth.clone().lerp(COLORS.earthLight, sunFactor * elevFactor * 0.35);
-  const rockC = COLORS.rock.clone().lerp(COLORS.rockLight, sunFactor * elevFactor * 0.4);
-  const screeC = COLORS.scree.clone().lerp(COLORS.screeLight, sunFactor * elevFactor * 0.4);
+  const grassC = COLORS.grass.clone().lerp(COLORS.grassLight, sunFactor * elevFactor * 0.4);
+  const earthC = COLORS.earth.clone().lerp(COLORS.earthLight, sunFactor * elevFactor * 0.4);
+  const rockC = COLORS.rock.clone().lerp(COLORS.rockLight, sunFactor * elevFactor * 0.45);
+  const screeC = COLORS.scree.clone().lerp(COLORS.screeLight, sunFactor * elevFactor * 0.45);
 
   const color = new THREE.Color(0, 0, 0);
   color.r = grassC.r * w.grass + earthC.r * w.earth + rockC.r * w.rock + screeC.r * w.scree;
@@ -122,7 +123,7 @@ export function createTerrainMesh(
   );
   geometry.computeVertexNormals();
 
-  const tex = createTerrainDetailTexture();
+  const tex = getTerrainDetailTexture();
   const material = new THREE.MeshLambertMaterial({
     map: tex,
     vertexColors: true,
@@ -130,42 +131,4 @@ export function createTerrainMesh(
   });
 
   return new THREE.Mesh(geometry, material);
-}
-
-/** Subtle organic detail texture - multiplies with vertex colors for micro-variation */
-function createTerrainDetailTexture(): THREE.CanvasTexture {
-  const size = 128;
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext("2d")!;
-
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, size, size);
-
-  for (let y = 0; y < size; y += 2) {
-    for (let x = 0; x < size; x += 2) {
-      const n = Math.sin(x * 0.4 + y * 0.3) * 0.5 + Math.sin(x * 0.15) * Math.sin(y * 0.12) * 0.5;
-      const v = Math.round(128 + n * 24);
-      ctx.fillStyle = `rgb(${v},${v},${v})`;
-      ctx.fillRect(x, y, 2, 2);
-    }
-  }
-
-  for (let i = 0; i < 120; i++) {
-    const x = ((i * 37 + 13) % size) + (i % 2) * 0.5;
-    const y = ((i * 53 + 7) % size) + (i % 3) * 0.3;
-    const r = 1 + (i % 2);
-    const a = 0.015 + (i % 4) * 0.008;
-    ctx.fillStyle = `rgba(0,0,0,${a})`;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(14, 14);
-  return tex;
 }

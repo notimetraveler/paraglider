@@ -3,8 +3,8 @@ import { canPlaceTree, getTerrainBiome } from "@/modules/world/terrain";
 
 describe("foliage placement", () => {
   it("allows trees in valley grass zones", () => {
-    expect(canPlaceTree(150, 220)).toBe(true);
-    expect(canPlaceTree(165, 230)).toBe(true);
+    expect(canPlaceTree(90, 225)).toBe(true);
+    expect(canPlaceTree(120, 225)).toBe(true);
   });
 
   it("disallows trees on mountain peak", () => {
@@ -18,6 +18,6 @@ describe("foliage placement", () => {
   });
 
   it("valley has grass biome for tree placement", () => {
-    expect(getTerrainBiome(150, 220)).toBe("grass");
+    expect(getTerrainBiome(90, 225)).toBe("grass");
   });
 });

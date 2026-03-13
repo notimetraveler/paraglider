@@ -8,6 +8,7 @@ import {
   type FpvScene,
   type HeadLook,
 } from "@/modules/rendering/fpv-scene";
+import { loadWorldTextures } from "@/modules/rendering/world-kit";
 import {
   createLaunchState,
   simulateStep,
@@ -31,17 +32,27 @@ import {
   getDefaultLevel,
   environmentFromLevel,
 } from "@/modules/world/level-loader";
+import {
+  generateSessionWind,
+  type SessionWind,
+} from "@/modules/world/session-wind";
 import { sampleTerrainState, terrainHeightAt } from "@/modules/world/terrain";
 import { checkGateProgress } from "@/modules/world/gates";
 import {
   formatAirtime,
   formatDistance,
+  classifyLandingType,
+  getBaseScoreForLandingType,
+  computeWindsockProximityPoints,
+  computeFinalScore,
   type SessionStats,
 } from "@/modules/scoring";
+import { formatWind } from "@/modules/hud";
 import { getThermalLift, getRidgeLift } from "@/modules/world/lift";
 import {
   SINK_AT_TRIM,
   FLARE_ALTITUDE,
+  FLARE_BRAKE_THRESHOLD,
   BRAKE_ACCEL_RAMP_RATE,
   STEER_RAMP_UP,
   STEER_RAMP_DOWN,
@@ -118,19 +129,22 @@ function buildPauseDebugSnapshot(
 export function SimulatorShell() {
   const level = useMemo(() => getDefaultLevel(), []);
   const thermalsDisabled = useThermalsDisabled();
-  const env = useMemo(() => {
-    const base = environmentFromLevel(level);
+  const baseEnv = useMemo(() => {
+    const env = environmentFromLevel(level);
     if (thermalsDisabled) {
-      return { ...base, thermals: [] };
+      return { ...env, thermals: [] };
     }
-    return base;
+    return env;
   }, [level, thermalsDisabled]);
-  const groundHeightAt = env.getGroundHeight ?? terrainHeightAt;
+  const groundHeightAt = baseEnv.getGroundHeight ?? terrainHeightAt;
 
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<FpvScene | null>(null);
   const stateRef = useRef<AircraftState>(
     createLaunchState(level.launch)
+  );
+  const [sessionWind, setSessionWind] = useState<SessionWind>(() =>
+    generateSessionWind()
   );
   const brakeLevelRef = useRef(0);
   const accelLevelRef = useRef(0);
@@ -146,7 +160,13 @@ export function SimulatorShell() {
     debugMode: urlDebug,
   }));
   const [showSettings, setShowSettings] = useState(false);
+  const [texturesReady, setTexturesReady] = useState(false);
   const settingsRef = useRef(settings);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    loadWorldTextures().then(() => setTexturesReady(true));
+  }, []);
   useEffect(() => {
     settingsRef.current = settings;
   }, [settings]);
@@ -173,7 +193,7 @@ export function SimulatorShell() {
   }, [settings]);
 
   const [hudData, setHudData] = useState<HudData>(() =>
-    mapAircraftToHudData(createLaunchState(level.launch), env, {
+    mapAircraftToHudData(createLaunchState(level.launch), baseEnv, {
       getGroundHeight: groundHeightAt,
       landingZone: level.landingZone,
       gateProgress: { passed: 0, total: level.gates.length },
@@ -207,12 +227,15 @@ export function SimulatorShell() {
   const launchTimeRef = useRef(0);
   const maxAltitudeRef = useRef(0);
   const maxDistanceRef = useRef(0);
+  const hadFlareInFlareZoneRef = useRef(false);
   const [scoreSummary, setScoreSummary] = useState<SessionStats | null>(null);
 
   const resetSimulationState = useMemo(
     () => () => {
       const initialState = createLaunchState(level.launch);
       stateRef.current = initialState;
+      setSessionWind(generateSessionWind());
+      hadFlareInFlareZoneRef.current = false;
       brakeLevelRef.current = 0;
       accelLevelRef.current = 0;
       steerLeftLevelRef.current = 0;
@@ -226,7 +249,7 @@ export function SimulatorShell() {
       setFlightState("airborne");
       setScoreSummary(null);
       setHudData(
-        mapAircraftToHudData(initialState, env, {
+        mapAircraftToHudData(initialState, { ...baseEnv, wind: sessionWind }, {
           getGroundHeight: groundHeightAt,
           landingZone: level.landingZone,
           gateProgress: { passed: 0, total: level.gates.length },
@@ -236,7 +259,7 @@ export function SimulatorShell() {
         buildPauseDebugSnapshot(initialState, groundHeightAt, "airborne", cameraModeRef.current)
       );
     },
-    [env, groundHeightAt, level]
+    [baseEnv, groundHeightAt, level, sessionWind]
   );
 
   const handleRestart = () => {
@@ -269,7 +292,7 @@ export function SimulatorShell() {
 
   useEffect(() => {
     const container = containerRef.current;
-    if (!container) return;
+    if (!container || !texturesReady) return;
 
     const vario = createVariometer({
       volume: settingsRef.current.varioVolume,
@@ -287,7 +310,7 @@ export function SimulatorShell() {
     const width = container.clientWidth || window.innerWidth;
     const height = container.clientHeight || window.innerHeight;
 
-    const scene = createFpvScene(canvas, level);
+    const scene = createFpvScene(canvas, level, sessionWind);
     resizeFpvScene(scene, width, height);
     sceneRef.current = scene;
     launchTimeRef.current = performance.now();
@@ -367,7 +390,8 @@ export function SimulatorShell() {
       inputsCache.brake = brakeLevel;
       inputsCache.acceleratedFlight = accelLevel;
       const envWithTerrain = {
-        ...env,
+        ...baseEnv,
+        wind: sessionWind,
         getGroundHeight: groundHeightAt,
       };
       const nextState = isPausedRef.current
@@ -432,6 +456,13 @@ export function SimulatorShell() {
           getHeight: groundHeightAt,
         });
         const heightAboveGround = Math.max(0, terrainSample.altitudeAboveGround);
+        if (
+          heightAboveGround <= FLARE_ALTITUDE &&
+          heightAboveGround > 0 &&
+          brakeLevelRef.current >= FLARE_BRAKE_THRESHOLD
+        ) {
+          hadFlareInFlareZoneRef.current = true;
+        }
         maxAltitudeRef.current = Math.max(
           maxAltitudeRef.current,
           heightAboveGround
@@ -453,15 +484,52 @@ export function SimulatorShell() {
       );
       gatePassedRef.current = gateProgress.passed;
 
-      if (didJustLand(currentState, nextState, groundHeightAt)) {
+      const justCrashed = nextState.crashed && !currentState.crashed;
+      if (justCrashed) {
+        const airtime = (performance.now() - launchTimeRef.current) / 1000;
+        setScoreSummary({
+          airtimeSeconds: airtime,
+          maxAltitude: maxAltitudeRef.current,
+          distanceFromLaunch: maxDistanceRef.current,
+          landingType: "crash",
+          baseScore: 0,
+          finalScore: 0,
+          windX: sessionWind.x,
+          windZ: sessionWind.z,
+        });
+        playLandingSound("rough", 3, {
+          enabled: settingsRef.current.landingEnabled,
+          volume: settingsRef.current.landingVolume,
+        });
+      } else if (didJustLand(currentState, nextState, groundHeightAt)) {
         const airtime = (performance.now() - launchTimeRef.current) / 1000;
         const sink = nextState.touchdownSink ?? 2;
         const quality = classifyLandingQuality(sink);
+        const landingType = classifyLandingType(
+          sessionWind,
+          nextState.heading,
+          hadFlareInFlareZoneRef.current
+        );
+        const baseScore = getBaseScoreForLandingType(landingType);
+        const lz = level.landingZone;
+        const distanceToWindsock = Math.hypot(
+          nextState.position.x - lz.x,
+          nextState.position.z - lz.z
+        );
+        const windsockProximityPoints = computeWindsockProximityPoints(distanceToWindsock);
+        const finalScore = computeFinalScore(baseScore, distanceToWindsock);
         setScoreSummary({
           airtimeSeconds: airtime,
           maxAltitude: maxAltitudeRef.current,
           distanceFromLaunch: maxDistanceRef.current,
           landingQuality: quality,
+          landingType,
+          baseScore,
+          distanceToWindsock,
+          windsockProximityPoints,
+          finalScore,
+          windX: sessionWind.x,
+          windZ: sessionWind.z,
         });
         playLandingSound(quality, sink, {
           enabled: settingsRef.current.landingEnabled,
@@ -473,7 +541,7 @@ export function SimulatorShell() {
       if (now - lastHudUpdateRef.current >= HUD_UPDATE_INTERVAL_MS) {
         lastHudUpdateRef.current = now;
         setHudData(
-          mapAircraftToHudData(nextState, env, {
+          mapAircraftToHudData(nextState, { ...baseEnv, wind: sessionWind }, {
             getGroundHeight: groundHeightAt,
             landingZone: level.landingZone,
             gateProgress: {
@@ -499,19 +567,19 @@ export function SimulatorShell() {
         setHudEnvDebug(
           settingsRef.current.debugMode
             ? {
-                windX: env.wind.x,
-                windZ: env.wind.z,
+                windX: sessionWind.x,
+                windZ: sessionWind.z,
                 thermalLift:
                   getThermalLift(
                     nextState.position.x,
                     nextState.position.z,
-                    env.thermals
+                    baseEnv.thermals
                   ) +
                   getRidgeLift(
                     nextState.position.x,
                     nextState.position.z,
-                    env.ridgeLift,
-                    env.wind
+                    baseEnv.ridgeLift,
+                    sessionWind
                   ),
               }
             : null
@@ -565,10 +633,15 @@ export function SimulatorShell() {
       canvas.remove();
       sceneRef.current = null;
     };
-  }, [level, env, groundHeightAt]);
+  }, [level, baseEnv, groundHeightAt, texturesReady, sessionWind]);
 
   return (
     <div ref={containerRef} className="relative h-full w-full min-h-screen">
+      {!texturesReady && (
+        <div className="absolute inset-0 flex items-center justify-center bg-sky-900/90 text-white/90">
+          <span className="font-mono text-sm">Loading environment…</span>
+        </div>
+      )}
       <Hud
         data={hudData}
         inputDebug={hudInputDebug}
@@ -666,39 +739,91 @@ export function SimulatorShell() {
           )}
         </div>
       )}
-      {flightState === "landed" && (
+      {(flightState === "landed" || flightState === "crashed") && (
         <div
           className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm"
           data-testid="landed-overlay"
         >
-          <p className="mb-2 font-mono text-xl font-semibold text-white">
-            Geland
+          <p
+            className={`mb-2 font-mono text-xl font-semibold ${
+              flightState === "crashed" ? "text-red-500" : "text-white"
+            }`}
+          >
+            {flightState === "crashed" ? "Crash" : "Geland"}
           </p>
           {scoreSummary && (
             <div
-              className="mb-4 flex flex-col gap-1 rounded bg-black/40 px-6 py-3 font-mono text-sm text-white/90"
+              className="mb-4 flex flex-col gap-1.5 rounded-lg border border-white/10 bg-slate-900/90 px-6 py-4 font-mono text-sm text-white/95 shadow-xl"
               data-testid="landing-summary"
             >
-              {scoreSummary.landingQuality && (
-                <span
-                  className={
-                    scoreSummary.landingQuality === "smooth"
-                      ? "text-emerald-400"
-                      : scoreSummary.landingQuality === "hard"
-                        ? "text-amber-400"
-                        : "text-red-400"
-                  }
-                >
-                  {scoreSummary.landingQuality === "smooth"
-                    ? "Nette landing"
-                    : scoreSummary.landingQuality === "hard"
-                      ? "Harde landing"
-                      : "Zware landing"}
+              {scoreSummary.windX != null && scoreSummary.windZ != null && (
+                <span className="text-slate-300">
+                  Wind: {formatWind(scoreSummary.windX, scoreSummary.windZ)}
                 </span>
               )}
-              <span>Vluchttijd: {formatAirtime(scoreSummary.airtimeSeconds)}</span>
-              <span>Grootste hoogte: {Math.round(scoreSummary.maxAltitude)} m</span>
-              <span>Afstand: {formatDistance(scoreSummary.distanceFromLaunch)}</span>
+              {scoreSummary.landingType === "crash" ? (
+                <span className="font-medium text-red-400">Botsing — 0 punten</span>
+              ) : (
+                <>
+                  {scoreSummary.landingQuality && (
+                    <span
+                      className={
+                        scoreSummary.landingQuality === "smooth"
+                          ? "text-emerald-400"
+                          : scoreSummary.landingQuality === "hard"
+                            ? "text-amber-400"
+                            : "text-red-400"
+                      }
+                    >
+                      {scoreSummary.landingQuality === "smooth"
+                        ? "Nette landing"
+                        : scoreSummary.landingQuality === "hard"
+                          ? "Harde landing"
+                          : "Zware landing"}
+                    </span>
+                  )}
+                  {scoreSummary.landingType && (
+                    <span
+                      className={
+                        scoreSummary.landingType === "into_wind_flare"
+                          ? "text-emerald-400"
+                          : scoreSummary.landingType === "into_wind_no_flare"
+                            ? "text-amber-400"
+                            : "text-orange-400"
+                      }
+                    >
+                      {scoreSummary.landingType === "downwind"
+                        ? "Landing met wind mee (downwind)"
+                        : scoreSummary.landingType === "into_wind_flare"
+                          ? "Tegenwind met flare"
+                          : "Tegenwind zonder flare"}
+                    </span>
+                  )}
+                  {scoreSummary.baseScore != null && (
+                    <span className="text-slate-300">
+                      Basispunten: {scoreSummary.baseScore} pt
+                    </span>
+                  )}
+                  {scoreSummary.distanceToWindsock != null && (
+                    <span className="text-slate-300">
+                      Afstand windsock: {Math.round(scoreSummary.distanceToWindsock)} m
+                      {scoreSummary.windsockProximityPoints != null && (
+                        <> — windzak: {scoreSummary.windsockProximityPoints} pt (−1% per 2 m, 0 pt vanaf 200 m)</>
+                      )}
+                    </span>
+                  )}
+                </>
+              )}
+              <span
+                className={`font-semibold ${
+                  scoreSummary.landingType === "crash" ? "text-red-400" : "text-white"
+                }`}
+              >
+                Eindscore: {scoreSummary.landingType === "crash" ? 0 : (scoreSummary.finalScore ?? 0)} pt
+              </span>
+              <span className="border-t border-white/10 pt-1.5 text-slate-400">
+                Vluchttijd {formatAirtime(scoreSummary.airtimeSeconds)} · Hoogte {Math.round(scoreSummary.maxAltitude)} m · Afstand {formatDistance(scoreSummary.distanceFromLaunch)}
+              </span>
             </div>
           )}
           <div className="flex gap-2">
@@ -719,7 +844,7 @@ export function SimulatorShell() {
               {showSettings ? "Verbergen" : "Instellingen"}
             </button>
           </div>
-          {showSettings && flightState === "landed" && (
+          {showSettings && (flightState === "landed" || flightState === "crashed") && (
             <SettingsPanel
               settings={settings}
               onSettingsChange={(u) => setSettings((s) => ({ ...s, ...u }))}

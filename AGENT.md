@@ -1,8 +1,13 @@
 # AGENT.md
 
-## Current implementation state (as of production pass)
+## Current implementation state
 
-The simulator is a deployable prototype with: first-person flight, wind/thermals/ridge lift, persistent settings (localStorage), volume sliders, HUD with LZ distance, pause/restart/landing flow, E2E tests, and performance optimizations. See `docs/ARCHITECTURE.md` and `docs/TEST_STRATEGY.md` for module and test coverage.
+The simulator is a deployable prototype with:
+
+- **Flight and controls**: First-person flight, wind/thermals/ridge lift, fixed timestep simulation, smooth input ramping, FPV/TPV/Top camera (Key C), persistent settings (localStorage), volume sliders, HUD ~25% larger for readability (altitude, VSI, LZ distance, flare hint, compass, wind), pause/restart/landing flow.
+- **World**: Mountain level (valley, launch ridge, landing basin, west/east walls); terrain height/biome (grass, earth, rock, scree) with vertex-color blending; water (valley lake + optional side basins) and obstacles (tree clusters, rocks) with collision; clear zones for launch, landing, and route.
+- **Rendering**: Sky gradient and fog from `atmosphere-config`; world-kit for foliage (slim/full tree variants), rocks (rounded/blocky variants), and water; gates (slate ring + posts, fog-aware), thermals (soft cylinder, fog-aware), windsock (base + pole + sock at LZ); terrain mesh and scene-decor use world-kit.
+- **Quality**: E2E tests, unit/integration tests (flight model, terrain, obstacles, gates, world-kit, atmosphere), lint/typecheck/build. See `docs/ARCHITECTURE.md` and `docs/TEST_STRATEGY.md` for module and test coverage.
 
 ---
 
@@ -230,8 +235,9 @@ The project must be engineered like a professional studio prototype.
 The simulator should look and feel like a serious prototype from a professional indie or AA game team.
 
 ### Visual goals
-- Clear atmospheric depth
-- Good terrain readability from the air
+- Clear atmospheric depth (sky gradient, fog, lighting from atmosphere-config)
+- Good terrain readability from the air (biome blending, valley, landmarks)
+- World presentation via world-kit (materials + reusable foliage, rocks, water); gates, thermals, windsock integrated and readable
 - Strong sensation of movement and altitude
 - Good horizon and sky rendering
 - Convincing forward speed cues
@@ -425,7 +431,7 @@ The simulator must implement the basic lifecycle of a paraglider session.
 - Detect contact with terrain (altitude + speed thresholds)
 - Landing quality: smooth (<1 m/s sink), hard (1–2.5 m/s), rough (>2.5 m/s)
 - Flare zone hint "↓ FLARE" in HUD when altitude < 4 m
-- Post-flight summary with airtime, max altitude, distance, landing quality
+- Post-flight summary with airtime, max altitude, distance, landing quality, wind, landing type, base score, windsock proximity, final score
 - Restart button; audio stops on pause and landing
 - Ground contact is basic physics: when the wing or pilot touches terrain, `worldY` must be clamped to terrain height and `ALT` must be exactly `0`
 
@@ -477,6 +483,7 @@ The prototype needs a clean, professional HUD.
 - Optional FPS in debug mode
 
 ### Implemented
+- HUD sized ~25% larger than baseline for better readability (font sizes, padding, panel position).
 - Variometer-style readout (VSI, lift indicator)
 - Minimalist flight instrument layout
 - Pause overlay (P key or button): Hervat, Opnieuw, Instellingen
@@ -513,17 +520,20 @@ Audio supports flight feel and situational awareness.
 The simulator needs terrain suitable for paraglider gameplay.
 
 ### Prototype world requirements (implemented)
-- Flat ground with subtle 50 m grid texture for depth perception
-- Landing zone: 70 m radius lighter patch at launch; `isInLandingZone(x,z)` helper
-- Clear launch area (platform)
-- Thermal and ridge visuals for discoverability
-- Good aerial readability from FPV
+- **Terrain shape**: Mountain level with valley carve, landing basin, valley apron; launch ridge and west/east walls; second mountain; biome sampling (grass, earth, rock, scree) and vertex-color blending; procedural detail texture.
+- **Landing zone**: 70 m radius at level-defined (x, z); LZ circle mesh and windsock; `isInLandingZone(x,z)` / `isInLandingClearZone` helpers.
+- **Launch**: Clear area and platform at level launch position; terrain height used for spawn.
+- **Water**: Valley lake (centreline) and optional side basins; placement only where basin factor and slope allow; world-kit `createWaterSurface`; no collision.
+- **Obstacles**: Trees (clusters, world-kit slim/full variants), rocks (ridge/sidewall, world-kit rounded/blocky variants); both have collision. Clear zones: launch, landing, route corridor. `modules/world/obstacles` and `modules/rendering/world-kit`.
+- **Gates**: Vertical ring + posts above terrain; slate materials, Lambert, fog-aware; gate progress logic unchanged.
+- **Thermals / ridge**: Thermal visuals (soft cylinder, fog-aware); ridge visuals grounded on terrain.
+- **Rendering pipeline**: `atmosphere-config` for sky gradient, fog, hemisphere, sun, fill; FPV scene uses it. World decor from `scene-decor` using world-kit only. Good aerial and route readability from FPV.
 
 ### Terrain rules
-- Terrain can be stylized-realistic or realistic
-- Terrain must support wind/lift gameplay
-- Avoid making terrain so detailed that performance degrades too early
-- Terrain collision must be reliable
+- Terrain is stylized-realistic alpine; see `docs/ART_DIRECTION.md`.
+- Terrain must support wind/lift gameplay.
+- Avoid making terrain so detailed that performance degrades too early.
+- Terrain collision must be reliable.
 - `ALT` is never absolute world height. It always means `worldY - terrainHeightAt(x, z)`.
 - Terrain collision, landing state, flare logic, HUD altitude, pause/debug snapshots, and scoring must all use the same shared terrain sampling source.
 - The rendered terrain mesh must use the same world coordinate orientation and height source as physics terrain. A mirrored or remapped visual terrain is a bug.
@@ -544,14 +554,11 @@ This is a simulator-first experience, but it still needs game structure.
 - Receive summary/score
 - Restart
 
-### Scoring ideas
-The score system may be simple but should reinforce skill:
-- Airtime
-- Landing smoothness
-- Landing accuracy
-- Max altitude gained
-- Time spent in lift
-- Clean flight bonus
+### Scoring (implemented)
+- **Landing type base score**: Downwind 25 pt, into-wind no flare 50 pt, into-wind with flare 100 pt. Crash = 0.
+- **Windsock proximity**: Up to 100 pt for landing close to the windsock (LZ center). 100 pt at 0 m; −1% per 2 m distance; 0 pt at 200 m. Formula: `windsockProximityPoints = round(100 * max(0, 1 - distance/200))`.
+- **Final score**: `baseScore + windsockProximityPoints` (max 200 pt for perfect into-wind flare on the windsock).
+- Post-flight overlay shows wind, landing type, basispunten, afstand windsock, windzak pt, eindscore, vluchttijd, hoogte, afstand.
 
 ### Avoid
 - Arcade collectibles as primary loop
@@ -707,7 +714,11 @@ A recommended structure:
 /modules
   /flight-model
   /rendering
+    atmosphere-config   # sky, fog, lighting
+    world-kit/          # materials, foliage, rocks, water (asset-driven pipeline)
+    fpv-scene, terrain-mesh, gate-mesh, windsock-mesh, scene-decor
   /world
+    terrain, level-loader, obstacles, gates, windsock, types
   /input
   /hud
   /audio

@@ -6,6 +6,7 @@
 import type { Environment } from "./types";
 import type { LevelData } from "./level-types";
 import { MOUNTAIN_01 } from "./levels/mountain-01";
+import { getObstacleColliders } from "./obstacles";
 import { terrainHeightAt } from "./terrain";
 
 const LAUNCH_CLEARANCE = 3;
@@ -62,5 +63,6 @@ export function environmentFromLevel(level: LevelData): Environment {
     thermals: level.thermals,
     ridgeLift: level.ridgeLift,
     getGroundHeight: terrainHeightAt,
+    obstacleColliders: getObstacleColliders(),
   };
 }

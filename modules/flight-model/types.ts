@@ -1,5 +1,5 @@
 /** Flight state enum - lifecycle of a paraglider session */
-export type FlightState = "ready" | "launch" | "airborne" | "landed" | "reset";
+export type FlightState = "ready" | "launch" | "airborne" | "landed" | "crashed" | "reset";
 
 /** 3D vector */
 export interface Vec3 {

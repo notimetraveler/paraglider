@@ -121,8 +121,9 @@ Maintain strict separation between:
 - `app/` for Next.js routes and app shell
 - `components/` for UI components
 - `modules/flight-model/`
-- `modules/rendering/`
-- `modules/world/`
+- `modules/rendering/` — FPV scene, terrain mesh, gate/windsock meshes, scene-decor (uses world-kit), atmosphere-config
+- `modules/rendering/world-kit/` — shared materials and reusable geometry (foliage, rocks, water) for asset-driven presentation
+- `modules/world/` — terrain height/biome, level loader, obstacles (trees, rocks, water), gates, windsock logic, collision
 - `modules/input/`
 - `modules/hud/`
 - `modules/audio/`
@@ -177,9 +178,18 @@ The world must affect flight.
 
 ### Implemented
 - **Wind**: Global vector; affects ground track. Default 5 m/s from west.
-- **Thermals**: Cylindrical zones, soft edge (1.0–1.15× radius), deterministic. Starter thermal near launch; others downwind.
-- **Ridge lift**: Line-based zones; lift when wind crosses perpendicularly. Default ridge at x = 85 (downwind of launch).
-- **Ground**: 50 m grid texture, 70 m landing zone at launch.
+- **Thermals**: Cylindrical zones, soft edge (1.0–1.15× radius), deterministic. Visual: soft Lambert cylinder, fog-aware.
+- **Ridge lift**: Line-based zones; lift when wind crosses perpendicularly. Visual ridge formations grounded on terrain.
+- **Terrain**: Mountain level with valley, launch ridge, landing basin, west/east walls, second mountain. Biome-based (grass, earth, rock, scree) with vertex-color blending and detail texture.
+- **Water**: Valley lake (centreline) + optional side basins; placement in low basin only; full disc + shore from world-kit.
+- **Obstacles**: Trees (clusters), rocks (ridge/sidewall), water. Collision for trees and rocks; clear zones (launch, landing, route). All decor from world-kit (foliage, rocks, water).
+- **Gates**: Slate blue-grey ring and posts, Lambert, fog-aware; vertical markers above terrain.
+- **Windsock**: At LZ; base + pole + sock, Lambert; indicates wind direction.
+- **Landing zone**: 70 m radius; LZ circle and windsock at level-defined position.
+
+### Scoring (landing)
+- **Landing type base score**: Downwind 25 pt, into-wind no flare 50 pt, into-wind with flare 100 pt. Crash = 0.
+- **Windsock proximity**: Up to 100 pt for landing close to the windsock. 100 pt at 0 m; −1% per 2 m; 0 pt at 200 m. `windsockProximityPoints = round(100 * max(0, 1 - distance/200))`. Final score = baseScore + windsockProximityPoints (max 200 pt). See `modules/scoring/compute.ts` (`computeWindsockProximityPoints`, `computeFinalScore`).
 
 Environmental systems should be tunable, understandable, testable, and performance-aware.
 
@@ -206,14 +216,15 @@ This is a web simulator. Performance is a product feature.
 
 ## Visual Quality Direction
 
-Aim for a professional prototype aesthetic.
+Aim for a professional prototype aesthetic: **stylized-realistic alpine**. See `docs/ART_DIRECTION.md` for palette and rules.
 
 Prioritize:
-- terrain readability from the air (50 m grid, landing zone)
-- a clear horizon and sky
-- atmospheric depth
+- terrain readability from the air (biome blending, landing zone, valley and landmarks)
+- sky gradient (zenith to horizon) and fog for depth; lighting from `modules/rendering/atmosphere-config`
+- world-kit driven presentation: `modules/rendering/world-kit` for materials and reusable geometry (foliage, rocks, water)
+- gates, thermals and windsock integrated and readable (no debug look)
 - strong sensation of movement and altitude
-- restrained but useful HUD
+- restrained but useful HUD (~25% larger for readability)
 - clean settings/pause flow (⚙ button, pause overlay, landed overlay)
 
 Avoid:
@@ -221,6 +232,7 @@ Avoid:
 - excessive screen shake
 - noisy post effects
 - visuals that reduce readability in first-person flight
+- reverting to primitive-only or placeholder visuals without using the world-kit
 
 ---
 
@@ -272,6 +284,7 @@ Centralize tunable values:
 - landing thresholds (smooth <1 m/s, hard 1–2.5 m/s, rough >2.5 m/s)
 - flare zone (4 m, brake ≥ 0.4)
 - landing zone radius (70 m)
+- windsock proximity: 100 pt at 0 m, −1% per 2 m, 0 pt at 200 m (`WINDSOCK_POINTS_MAX`, `WINDSOCK_DISTANCE_ZERO_PCT_M` in `modules/scoring/compute.ts`)
 
 ---
 

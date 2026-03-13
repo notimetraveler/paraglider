@@ -82,10 +82,12 @@ describe("hud map", () => {
         position: { x: 10, y: 200, z: 5 },
         airspeed: 8.5,
         verticalSpeed: -1.2,
+        velocity: { x: 6, y: -1.2, z: 4 },
         heading: Math.PI / 4,
       });
       const hud = mapAircraftToHudData(state, ZERO_ENVIRONMENT);
       expect(hud.airspeed).toBe(8.5);
+      expect(hud.groundSpeed).toBeCloseTo(Math.hypot(6, 4), 5);
       expect(hud.altitude).toBe(200);
       expect(hud.verticalSpeed).toBe(-1.2);
       expect(hud.heading).toBe(Math.PI / 4);

@@ -1,6 +1,8 @@
 /**
- * Terrain height sampling - used for collision and landing detection.
- * Pure functions for testability.
+ * Terrain height sampling — Level 01 (Fjordvallei) only.
+ * Single launch mountain, broad valley, fjord, landing basin. No second mountain.
+ * Used for collision, landing, HUD altitude, and rendering.
+ * Spec: docs/LEVEL_01_WORLD_SPEC.md
  */
 
 /** Ground level for flat terrain (legacy default) */
@@ -9,34 +11,78 @@ export const FLAT_GROUND_LEVEL = 0;
 /** Sampling step for slope calculation (m) */
 const SLOPE_DELTA = 2;
 
-/**
- * Shared terrain height source of truth for rendering, HUD altitude, and collision.
- * The player launches from the first mountain, glides out over a valley,
- * and then meets a second mountain on the default straight flight path.
- */
-export function terrainHeightAt(x: number, z: number): number {
-  const valleyFloor = Math.max(0, 4 + Math.abs(x) * 0.002 + z * 0.0015);
-  const firstMountain = gaussianHill(x, z, 0, 0, 240, 125);
-  const secondMountain = gaussianHill(x, z, 0, 430, 240, 125);
-  const base = valleyFloor + firstMountain + secondMountain;
-  const noise = (pseudoNoise2D(x * 0.025, z * 0.025) - 0.5) * 1.2;
+/** Level 01: launch ridge (takeoff) */
+const LAUNCH_CLEARING_X = 0;
+const LAUNCH_CLEARING_Z = 100;
 
-  return Math.max(valleyFloor, base + noise);
+/** Level 01: landing field center */
+const LANDING_BASIN_X = 0;
+const LANDING_BASIN_Z = 312;
+
+/** Level 01: fjord / main water body center */
+const FJORD_CENTER_X = 0;
+const FJORD_CENTER_Z = 248;
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
 }
 
-/** Seeded pseudo-noise for deterministic terrain variation */
-function pseudoNoise2D(x: number, z: number): number {
-  const ix = Math.floor(x);
-  const iz = Math.floor(z);
-  const fx = x - Math.floor(x);
-  const fz = z - Math.floor(z);
-  const u = fx * fx * (3 - 2 * fx);
-  const v = fz * fz * (3 - 2 * fz);
-  const a = hash2D(ix, iz);
-  const b = hash2D(ix + 1, iz);
-  const c = hash2D(ix, iz + 1);
-  const d = hash2D(ix + 1, iz + 1);
-  return a * (1 - u) * (1 - v) + b * u * (1 - v) + c * (1 - u) * v + d * u * v;
+function elongatedGaussian(
+  x: number,
+  z: number,
+  cx: number,
+  cz: number,
+  height: number,
+  falloffX: number,
+  falloffZ: number
+): number {
+  const dx = (x - cx) / falloffX;
+  const dz = (z - cz) / falloffZ;
+  return height * Math.exp(-(dx * dx + dz * dz));
+}
+
+function ridgeBand(
+  x: number,
+  z: number,
+  centerCoord: number,
+  alongCoord: number,
+  height: number,
+  acrossFalloff: number,
+  alongFalloff: number,
+  orientation: "east-west" | "north-south"
+): number {
+  if (orientation === "east-west") {
+    return elongatedGaussian(
+      x,
+      z,
+      0,
+      centerCoord,
+      height,
+      alongFalloff,
+      acrossFalloff
+    );
+  }
+  return elongatedGaussian(
+    x,
+    z,
+    centerCoord,
+    alongCoord,
+    height,
+    acrossFalloff,
+    alongFalloff
+  );
+}
+
+function basinCut(
+  x: number,
+  z: number,
+  cx: number,
+  cz: number,
+  depth: number,
+  falloffX: number,
+  falloffZ: number
+): number {
+  return elongatedGaussian(x, z, cx, cz, depth, falloffX, falloffZ);
 }
 
 function gaussianHill(
@@ -58,8 +104,103 @@ function hash2D(x: number, z: number): number {
   return n - Math.floor(n);
 }
 
+function pseudoNoise2D(x: number, z: number): number {
+  const ix = Math.floor(x);
+  const iz = Math.floor(z);
+  const fx = x - Math.floor(x);
+  const fz = z - Math.floor(z);
+  const u = fx * fx * (3 - 2 * fx);
+  const v = fz * fz * (3 - 2 * fz);
+  const a = hash2D(ix, iz);
+  const b = hash2D(ix + 1, iz);
+  const c = hash2D(ix, iz + 1);
+  const d = hash2D(ix + 1, iz + 1);
+  return a * (1 - u) * (1 - v) + b * u * (1 - v) + c * (1 - u) * v + d * u * v;
+}
+
 /**
- * Approximate terrain slope at (x, z) - returns 0..1 (0=flat, 1=vertical).
+ * Ridge/cliff micro-detail for launch and steep slopes.
+ */
+function ridgedDetail(x: number, z: number, baseHeight: number): number {
+  const n = pseudoNoise2D(x * 0.028, z * 0.028);
+  const ridge = 1 - 2 * Math.abs(n - 0.5);
+  const n2 = pseudoNoise2D(x * 0.062 + 7, z * 0.062 + 13);
+  const ridge2 = 1 - 2 * Math.abs(n2 - 0.5);
+  const elevFactor = smoothstep(40, 100, baseHeight);
+  return (ridge * 1.8 + ridge2 * 1.2) * elevFactor;
+}
+
+/**
+ * Level 01 terrain: one launch mountain, valley, fjord, landing basin.
+ * Valley walls bound the corridor; far end is a gentle rise (no second mountain).
+ */
+export function terrainHeightAt(x: number, z: number): number {
+  const regionalPedestal = 12 + z * 0.008 + Math.abs(x) * 0.006;
+
+  // —— Launch mountain (elevated ridge, dramatic takeoff) ——
+  const launchPeak = gaussianHill(x, z, -8, 8, 220, 118);
+  const launchRidge = ridgeBand(x, z, 102, 0, 95, 40, 200, "east-west");
+  const westShoulder = gaussianHill(x, z, -110, 132, 44, 86);
+  const eastShoulder = gaussianHill(x, z, 105, 142, 36, 92);
+
+  // —— Valley corridor (carve + fjord + landing basin) ——
+  const valleyCarve = basinCut(x, z, 0, 240, 120, 160, 120);
+  const fjordDepression = basinCut(
+    x,
+    z,
+    FJORD_CENTER_X,
+    FJORD_CENTER_Z,
+    32,
+    55,
+    42
+  );
+  const landingBasin = basinCut(
+    x,
+    z,
+    LANDING_BASIN_X,
+    LANDING_BASIN_Z,
+    22,
+    95,
+    75
+  );
+  const valleyApron = basinCut(x, z, 0, 300, 35, 140, 100);
+
+  // —— Valley sidewalls (forested hillsides) ——
+  const westWall = ridgeBand(x, z, -168, 238, 58, 46, 250, "north-south");
+  const eastWall = ridgeBand(x, z, 168, 238, 56, 48, 250, "north-south");
+
+  // —— Far end: gentle rise only (valley opens, no second mountain) ——
+  const farRise = smoothstep(320, 420, z) * (28 + 0.05 * Math.abs(x));
+
+  const baseHeight =
+    regionalPedestal +
+    launchPeak +
+    launchRidge +
+    westShoulder +
+    eastShoulder +
+    westWall +
+    eastWall +
+    farRise -
+    valleyCarve -
+    fjordDepression -
+    landingBasin -
+    valleyApron;
+
+  const microNoise =
+    (pseudoNoise2D(x * 0.018, z * 0.018) - 0.5) * 1.6 +
+    (pseudoNoise2D(x * 0.045 + 11, z * 0.045 + 17) - 0.5) * 0.9;
+
+  const ridgeDetail = ridgedDetail(x, z, baseHeight);
+
+  const basinFloor =
+    6 +
+    Math.abs(x) * 0.012 +
+    Math.max(0, z - LANDING_BASIN_Z) * 0.006;
+  return Math.max(basinFloor, baseHeight + microNoise + ridgeDetail);
+}
+
+/**
+ * Approximate terrain slope at (x, z) — 0..1 (0 = flat, 1 = vertical).
  */
 export function getTerrainSlope(x: number, z: number): number {
   const h = terrainHeightAt(x, z);
@@ -71,10 +212,16 @@ export function getTerrainSlope(x: number, z: number): number {
   return Math.min(1, gradient * 0.5);
 }
 
-/** Biome type for terrain styling and foliage placement */
 export type TerrainBiome = "grass" | "earth" | "rock" | "scree";
 
-/** Biome thresholds - aligned with docs/ART_DIRECTION.md */
+export interface TerrainShapeSample {
+  height: number;
+  slope: number;
+  ridgeFactor: number;
+  basinFactor: number;
+  sidewallFactor: number;
+}
+
 export const BIOME_THRESHOLDS = {
   grassMaxHeight: 55,
   grassMaxSlope: 0.18,
@@ -86,24 +233,52 @@ export const BIOME_THRESHOLDS = {
   screeMinSlope: 0.22,
 } as const;
 
-/**
- * Smooth step for blending - returns 0 for x <= edge0, 1 for x >= edge1.
- */
+export function getTerrainShapeSample(
+  x: number,
+  z: number
+): TerrainShapeSample {
+  const height = terrainHeightAt(x, z);
+  const slope = getTerrainSlope(x, z);
+  const ridgeFactor = clamp01(
+    0.7 * smoothstep(110, 155, height) +
+      0.3 * smoothstep(0.12, 0.26, slope) -
+      0.25 * smoothstep(0.12, 0.42, Math.abs(x) / 220)
+  );
+  const basinFactor = clamp01(
+    smoothstep(0, 1, 1 - Math.min(1, height / 58)) *
+      smoothstep(0, 1, 1 - Math.min(1, slope / 0.18)) *
+      (1 - smoothstep(70, 205, Math.abs(x - LANDING_BASIN_X))) *
+      (1 - smoothstep(55, 135, Math.abs(z - LANDING_BASIN_Z)))
+  );
+  const sidewallFactor = clamp01(
+    smoothstep(55, 105, Math.abs(x)) *
+      smoothstep(25, 85, height) *
+      smoothstep(0.12, 0.28, slope)
+  );
+
+  return {
+    height,
+    slope,
+    ridgeFactor,
+    basinFactor,
+    sidewallFactor,
+  };
+}
+
 export function smoothstep(edge0: number, edge1: number, x: number): number {
   const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
   return t * t * (3 - 2 * t);
 }
 
-/**
- * Get terrain biome at (x, z) for materials and foliage.
- * Aligned with ART_DIRECTION: grass valley, earth mid-slope, rock steep, scree high exposed.
- */
 export function getTerrainBiome(x: number, z: number): TerrainBiome {
   const h = terrainHeightAt(x, z);
   const slope = getTerrainSlope(x, z);
 
   if (slope > BIOME_THRESHOLDS.rockMinSlope) return "rock";
-  if (h > BIOME_THRESHOLDS.screeMinHeight && slope > BIOME_THRESHOLDS.screeMinSlope)
+  if (
+    h > BIOME_THRESHOLDS.screeMinHeight &&
+    slope > BIOME_THRESHOLDS.screeMinSlope
+  )
     return "scree";
   if (
     h < BIOME_THRESHOLDS.grassMaxHeight &&
@@ -113,10 +288,6 @@ export function getTerrainBiome(x: number, z: number): TerrainBiome {
   return "earth";
 }
 
-/**
- * Biome weights for smooth material blending (0..1 each, sum ≈ 1).
- * Used by terrain mesh for vertex color blending.
- */
 export interface BiomeWeights {
   grass: number;
   earth: number;
@@ -131,7 +302,8 @@ export function getBiomeWeights(x: number, z: number): BiomeWeights {
   const rock = smoothstep(0.26, 0.4, slope);
   const screeHeight = smoothstep(BIOME_THRESHOLDS.screeMinHeight, 98, h);
   const screeSlope = smoothstep(0.16, 0.32, slope);
-  const scree = (1 - rock) * screeHeight * (0.5 + 0.5 * screeSlope);
+  const scree =
+    (1 - rock) * screeHeight * (0.5 + 0.5 * screeSlope);
   const grass =
     (1 - rock - scree) *
     (1 - smoothstep(45, 62, h)) *
@@ -150,13 +322,21 @@ export function getBiomeWeights(x: number, z: number): BiomeWeights {
   };
 }
 
-/**
- * Can trees grow here? Only in grass biome, low slope.
- */
 export function canPlaceTree(x: number, z: number): boolean {
   const biome = getTerrainBiome(x, z);
-  const slope = getTerrainSlope(x, z);
-  return biome === "grass" && slope < 0.2;
+  const sample = getTerrainShapeSample(x, z);
+  const distToLaunch = Math.hypot(x - LAUNCH_CLEARING_X, z - LAUNCH_CLEARING_Z);
+  const distToLanding = Math.hypot(
+    x - LANDING_BASIN_X,
+    z - LANDING_BASIN_Z
+  );
+  return (
+    biome === "grass" &&
+    sample.slope < 0.2 &&
+    sample.basinFactor < 0.92 &&
+    distToLaunch > 42 &&
+    distToLanding > 58
+  );
 }
 
 export type TerrainHeightFn = (x: number, z: number) => number;
@@ -174,14 +354,8 @@ export interface TerrainSampleInput {
   getHeight?: TerrainHeightFn;
 }
 
-/**
- * Backward-compatible alias while the codebase migrates to terrainHeightAt().
- */
 export const getMountainTerrainHeight: TerrainHeightFn = terrainHeightAt;
 
-/**
- * ALT / clearance above terrain at the current world position.
- */
 export function altitudeAboveTerrain(
   worldY: number,
   x: number,
@@ -191,9 +365,6 @@ export function altitudeAboveTerrain(
   return worldY - getHeight(x, z);
 }
 
-/**
- * Shared terrain sample for physics, HUD, and landing state.
- */
 export function sampleTerrainState({
   x,
   z,

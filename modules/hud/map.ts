@@ -65,8 +65,11 @@ export function mapAircraftToHudData(
     heightAboveGround <= 4 &&
     heightAboveGround > 0;
 
+  const groundSpeed = Math.hypot(state.velocity.x, state.velocity.z);
+
   return {
     airspeed: state.airspeed,
+    groundSpeed,
     altitude: Math.max(0, heightAboveGround),
     verticalSpeed: state.verticalSpeed,
     heading: state.heading,

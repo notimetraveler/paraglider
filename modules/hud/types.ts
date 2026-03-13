@@ -1,6 +1,8 @@
 /** HUD display data - derived from simulation state */
 export interface HudData {
   airspeed: number;
+  /** Ground speed (horizontal over terrain, m/s) */
+  groundSpeed: number;
   altitude: number;
   verticalSpeed: number;
   heading: number;

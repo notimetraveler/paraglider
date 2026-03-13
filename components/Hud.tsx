@@ -22,9 +22,8 @@ interface HudProps {
 }
 
 /**
- * Minimal professional HUD - first-person flight instruments.
- * Keeps FPV unobstructed; clear visual hierarchy.
- * Debug input state and env only when debugMode is true.
+ * Compact flight device — bottom-left only, instrument-style panel.
+ * Keeps FPV clear; heading, wind and main instruments in one small unit.
  */
 export function Hud({
   data,
@@ -40,14 +39,21 @@ export function Hud({
 
   const inThermal = data.thermalLift > 0.05;
   const thermalStrength = Math.min(1, data.thermalLift / 2);
-  const inFlareZone = data.inFlareZone ?? (data.altitude <= 4 && data.altitude > 0 && data.state === "airborne");
+  const inFlareZone =
+    data.inFlareZone ??
+    (data.altitude <= 4 && data.altitude > 0 && data.state === "airborne");
+
+  const windSpeed = Math.hypot(data.windX, data.windZ);
+  const hasWind = windSpeed >= 0.1;
+  const windFromRad = Math.atan2(-data.windX, -data.windZ);
+  const windFromDeg = (windFromRad * (180 / Math.PI) + 360) % 360;
 
   return (
     <div
       className="pointer-events-none absolute inset-0 flex flex-col justify-between"
       data-testid="hud"
     >
-      {/* Duidelijke oranje gloed: onmiskenbaar wanneer je in thermiek zit */}
+      {/* Full-screen thermiek gloed */}
       {inThermal && (
         <div
           className="absolute inset-0 pointer-events-none"
@@ -60,75 +66,114 @@ export function Hud({
           aria-hidden
         />
       )}
-      {/* Top: heading / compass + wind + pause indicator */}
-      <div className="flex flex-col items-center gap-2 pt-6">
-        {isPaused && (
-          <div className="rounded bg-amber-500/80 px-3 py-1 font-mono text-sm font-semibold text-black">
+
+      {/* Pause — top center, small */}
+      {isPaused && (
+        <div className="flex justify-center pt-5">
+          <div className="rounded bg-amber-500/90 px-4 py-1.5 font-mono text-base font-semibold text-black">
             PAUZE
           </div>
-        )}
-        {inThermal && (
-          <div
-            className="rounded bg-amber-500/40 px-2 py-0.5 font-mono text-xs font-medium text-amber-100"
-            data-testid="thermal-badge"
-          >
-            THERMIEK +{data.thermalLift.toFixed(1)} m/s
-          </div>
-        )}
-        {inFlareZone && (
-          <div
-            className="rounded bg-sky-600/50 px-2 py-0.5 font-mono text-xs font-medium text-sky-100"
-            data-testid="flare-hint"
-          >
-            ↓ FLARE
-          </div>
-        )}
-        <div className="rounded bg-black/40 px-3 py-1 font-mono text-sm font-medium text-white/95 backdrop-blur-sm">
-          <span className="tabular-nums">{formatHeadingCompass(data.heading)}</span>
-          <span className="ml-1.5 text-white/70">
-            {((data.heading * (180 / Math.PI) + 360) % 360).toFixed(0)}°
-          </span>
         </div>
-        <div className="rounded bg-black/50 px-2 py-0.5 font-mono text-xs text-amber-200/95">
-          WIND {formatWind(data.windX, data.windZ)}
-        </div>
-      </div>
+      )}
 
-      {/* Center: main instruments - bottom-left, compact */}
-      <div className="pb-8 pl-6">
-          <div className="flex flex-col gap-0.5 font-mono text-sm">
-          <div className="flex items-baseline gap-3">
-            <span className="text-white/60">SPD</span>
+      {/* Thermiek / flare badges — top center, only when active */}
+      {(inThermal || inFlareZone) && (
+        <div className="flex justify-center gap-2.5 pt-2.5">
+          {inThermal && (
+            <span
+              className="rounded bg-amber-500/80 px-2.5 py-1 font-mono text-sm text-black"
+              data-testid="thermal-badge"
+            >
+              THERMIEK +{data.thermalLift.toFixed(1)}
+            </span>
+          )}
+          {inFlareZone && (
+            <span
+              className="rounded bg-sky-500/80 px-2.5 py-1 font-mono text-sm text-white"
+              data-testid="flare-hint"
+            >
+              ↓ FLARE
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Flight device — bottom-left only: compact instrument panel (~25% larger) */}
+      <div className="absolute left-5 bottom-5">
+        <div
+          className="rounded-xl border-2 border-slate-600/90 bg-slate-900/95 px-4 py-3 shadow-2xl backdrop-blur-sm"
+          style={{
+            boxShadow:
+              "inset 0 1px 0 rgba(255,255,255,0.06), 0 8px 24px rgba(0,0,0,0.5)",
+          }}
+        >
+          {/* Top row: compass + wind in one line */}
+          <div className="mb-2.5 flex items-center justify-between gap-4 border-b border-slate-600/80 pb-2 font-mono text-[14px]">
+            <span className="tabular-nums text-white">
+              {formatHeadingCompass(data.heading)}{" "}
+              <span className="text-slate-400">
+                {((data.heading * (180 / Math.PI) + 360) % 360).toFixed(0)}°
+              </span>
+            </span>
+            <span className="flex items-center gap-2 text-amber-200/90">
+              {hasWind && (
+                <span
+                  className="inline-flex h-3 w-3 items-center justify-center rounded-full border border-amber-400/80 bg-slate-800"
+                  aria-hidden
+                >
+                  <span
+                    className="inline-block h-2 w-px bg-amber-300"
+                    style={{
+                      transformOrigin: "50% 100%",
+                      transform: `rotate(${windFromRad}rad)`,
+                    }}
+                  />
+                </span>
+              )}
+              <span>{formatWind(data.windX, data.windZ)}</span>
+              {hasWind && (
+                <span className="text-slate-400">
+                  {windFromDeg.toFixed(0)}°
+                </span>
+              )}
+            </span>
+          </div>
+          {/* Instruments */}
+          <div className="grid grid-cols-[auto_1fr_auto] items-baseline gap-x-4 gap-y-1 font-mono text-[15px]">
+            <span className="text-slate-500">AIR</span>
             <span className="tabular-nums font-semibold text-white">
               {formatSpeed(data.airspeed)}
             </span>
-            <span className="text-white/50">m/s</span>
-          </div>
-          <div className="flex items-baseline gap-3">
-            <span className="text-white/60">ALT</span>
+            <span className="text-slate-500">m/s</span>
+            <span className="text-slate-500">GS</span>
+            <span className="tabular-nums font-semibold text-sky-300">
+              {formatSpeed(data.groundSpeed)}
+            </span>
+            <span className="text-slate-500">m/s</span>
+            <span className="text-slate-500">ALT</span>
             <span className="tabular-nums font-semibold text-white">
               {formatAltitude(data.altitude)}
             </span>
-            <span className="text-white/50">m</span>
-          </div>
-          {data.gateProgress && data.gateProgress.total > 0 && (
-            <div className="flex items-baseline gap-3">
-              <span className="text-white/60">GATE</span>
-              <span className="tabular-nums font-semibold text-cyan-300">
-                {data.gateProgress.passed}/{data.gateProgress.total}
-              </span>
-            </div>
-          )}
-          {data.distanceToLz !== undefined && (
-            <div className="flex items-baseline gap-3">
-              <span className="text-white/60">LZ</span>
-              <span className="tabular-nums font-semibold text-sky-300">
-                {Math.round(data.distanceToLz)} m
-              </span>
-            </div>
-          )}
-          <div className="flex items-baseline gap-3">
-            <span className="text-white/60">VSI</span>
+            <span className="text-slate-500">m</span>
+            {data.gateProgress && data.gateProgress.total > 0 && (
+              <>
+                <span className="text-slate-500">GATE</span>
+                <span className="tabular-nums font-semibold text-cyan-300">
+                  {data.gateProgress.passed}/{data.gateProgress.total}
+                </span>
+                <span />
+              </>
+            )}
+            {data.distanceToLz !== undefined && (
+              <>
+                <span className="text-slate-500">LZ</span>
+                <span className="tabular-nums font-semibold text-sky-300">
+                  {Math.round(data.distanceToLz)} m
+                </span>
+                <span />
+              </>
+            )}
+            <span className="text-slate-500">VSI</span>
             <span
               className={`tabular-nums font-semibold ${
                 data.verticalSpeed > 0 ? "text-emerald-400" : "text-white"
@@ -136,24 +181,24 @@ export function Hud({
             >
               {formatVerticalSpeed(data.verticalSpeed)}
             </span>
-            <span className="text-white/50">m/s</span>
+            <span className="text-slate-500">m/s</span>
+            {data.thermalLift > 0.1 && (
+              <>
+                <span className="text-slate-500">LFT</span>
+                <span className="tabular-nums font-semibold text-amber-400">
+                  +{data.thermalLift.toFixed(1)}
+                </span>
+                <span className="text-slate-500">m/s</span>
+              </>
+            )}
           </div>
-          {data.thermalLift > 0.1 && (
-            <div className="flex items-baseline gap-3">
-              <span className="text-white/60">LFT</span>
-              <span className="tabular-nums font-semibold text-amber-400">
-                +{data.thermalLift.toFixed(1)}
-              </span>
-              <span className="text-white/50">m/s</span>
-            </div>
-          )}
         </div>
       </div>
 
-      {/* Debug: input + env + tuning - ?debug=1 */}
+      {/* Debug — bottom-right */}
       {(showInputDebug || showEnvDebug || showTuningDebug) && (
         <div
-          className="absolute bottom-8 right-6 flex flex-col gap-1 rounded bg-black/30 px-2 py-1 font-mono text-[10px] text-white/60"
+          className="absolute bottom-5 right-5 flex flex-col gap-1.5 rounded-lg border border-slate-600/80 bg-slate-900/90 px-3 py-2 font-mono text-xs text-slate-400"
           data-testid="hud-debug"
         >
           {showInputDebug && (
@@ -178,18 +223,10 @@ export function Hud({
               {tuningDebug.worldX !== undefined &&
                 tuningDebug.worldY !== undefined &&
                 tuningDebug.worldZ !== undefined && (
-                  <>
-                    {" "}
-                    | P {tuningDebug.worldX.toFixed(0)} {tuningDebug.worldY.toFixed(0)}{" "}
-                    {tuningDebug.worldZ.toFixed(0)}
-                  </>
+                  <> | P {tuningDebug.worldX.toFixed(0)} {tuningDebug.worldY.toFixed(0)} {tuningDebug.worldZ.toFixed(0)}</>
                 )}
               {tuningDebug.groundAt !== undefined && (
-                <>
-                  {" "}
-                  | G {tuningDebug.groundAt.toFixed(0)} ALT{" "}
-                  {tuningDebug.heightAboveGround?.toFixed(0)}
-                </>
+                <> | G {tuningDebug.groundAt.toFixed(0)} ALT {tuningDebug.heightAboveGround?.toFixed(0)}</>
               )}
               {tuningDebug.collisionState && <> | {tuningDebug.collisionState}</>}
             </span>

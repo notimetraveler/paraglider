@@ -6,6 +6,7 @@ import {
   getTerrainSlope,
   getTerrainBiome,
   getBiomeWeights,
+  getTerrainShapeSample,
   smoothstep,
   canPlaceTree,
   FLAT_GROUND_LEVEL,
@@ -51,15 +52,14 @@ describe("terrain", () => {
     expect(terrainHeightAt(40, 260)).toBe(getMountainTerrainHeight(40, 260));
   });
 
-  it("has two similarly high mountain peaks with a valley between", () => {
+  it("has one launch massif and a valley (Level 01 fjord valley, no second mountain)", () => {
     const firstPeak = getMountainTerrainHeight(0, 0);
     const valley = getMountainTerrainHeight(0, 220);
-    const secondPeak = getMountainTerrainHeight(0, 430);
+    const farValley = getMountainTerrainHeight(0, 430);
 
     expect(firstPeak).toBeGreaterThan(200);
-    expect(secondPeak).toBeGreaterThan(200);
-    expect(Math.abs(firstPeak - secondPeak)).toBeLessThan(15);
     expect(valley).toBeLessThan(35);
+    expect(farValley).toBeLessThan(80);
   });
 
   it("valley floor is low and positive", () => {
@@ -74,7 +74,7 @@ describe("terrain", () => {
     expect(Math.abs(justAfter - justBefore)).toBeLessThan(0.5);
   });
 
-  it("default flight path goes from launch mountain toward another hill", () => {
+  it("default flight path goes from launch mountain through valley", () => {
     const level = getDefaultLevel();
     const heading = level.launch.heading;
     const airspeed = level.launch.initialSpeed;
@@ -90,11 +90,57 @@ describe("terrain", () => {
 
     const launchMountain = sampleAt(0);
     const valley = sampleAt(15);
-    const nextHill = sampleAt(30);
+    const towardLZ = sampleAt(40);
 
     expect(launchMountain).toBeGreaterThan(100);
     expect(valley).toBeLessThan(60);
-    expect(nextHill).toBeGreaterThan(100);
+    expect(towardLZ).toBeLessThan(150);
+  });
+
+  it("launch massif has a clear ridge with steep drop toward the main valley", () => {
+    const ridge = terrainHeightAt(0, 100);
+    const westShoulder = terrainHeightAt(-80, 120);
+    const eastShoulder = terrainHeightAt(90, 135);
+    const valleyFloor = terrainHeightAt(0, 235);
+
+    expect(ridge).toBeGreaterThan(145);
+    expect(ridge - valleyFloor).toBeGreaterThan(85);
+    expect(westShoulder).toBeGreaterThan(valleyFloor + 30);
+    expect(eastShoulder).toBeGreaterThan(valleyFloor + 25);
+  });
+
+  it("landing basin stays low and flatter than the surrounding sidewalls", () => {
+    const basin = getTerrainShapeSample(0, 225);
+    const westWall = getTerrainShapeSample(-180, 225);
+    const eastWall = getTerrainShapeSample(180, 225);
+
+    expect(basin.height).toBeLessThan(45);
+    expect(basin.slope).toBeLessThan(0.14);
+    expect(westWall.height).toBeGreaterThan(basin.height + 30);
+    expect(eastWall.height).toBeGreaterThan(basin.height + 30);
+    expect(westWall.slope).toBeGreaterThan(basin.slope);
+    expect(eastWall.slope).toBeGreaterThan(basin.slope);
+  });
+
+  it("far end of valley rises gently (Level 01 single valley, no second mountain)", () => {
+    const center = terrainHeightAt(0, 420);
+    const westSpread = terrainHeightAt(-90, 420);
+    const eastSpread = terrainHeightAt(90, 420);
+
+    expect(center).toBeGreaterThan(15);
+    expect(westSpread).toBeGreaterThan(15);
+    expect(eastSpread).toBeGreaterThan(15);
+    expect(center).toBeLessThan(80);
+  });
+
+  it("reports deterministic macro shape factors for ridge and basin areas", () => {
+    const ridge = getTerrainShapeSample(0, 100);
+    const basin = getTerrainShapeSample(0, 225);
+
+    expect(ridge.ridgeFactor).toBeGreaterThan(0.55);
+    expect(ridge.basinFactor).toBeLessThan(0.3);
+    expect(basin.basinFactor).toBeGreaterThan(0.55);
+    expect(basin.ridgeFactor).toBeLessThan(0.25);
   });
 
   it("FLAT_GROUND_LEVEL is 0", () => {
@@ -103,7 +149,7 @@ describe("terrain", () => {
 
   describe("getTerrainSlope", () => {
     it("returns low slope in valley", () => {
-      expect(getTerrainSlope(150, 220)).toBeLessThan(0.2);
+      expect(getTerrainSlope(0, 225)).toBeLessThan(0.2);
     });
     it("returns higher slope near peak", () => {
       expect(getTerrainSlope(0, 0)).toBeGreaterThan(0);
@@ -128,7 +174,7 @@ describe("terrain", () => {
 
   describe("getTerrainBiome", () => {
     it("returns grass in valley", () => {
-      expect(getTerrainBiome(150, 220)).toBe("grass");
+      expect(getTerrainBiome(90, 225)).toBe("grass");
     });
     it("returns rock or scree on steep slopes", () => {
       const b = getTerrainBiome(0, 0);
@@ -147,7 +193,7 @@ describe("terrain", () => {
       expect(sum).toBeCloseTo(1, 5);
     });
     it("valley has dominant grass weight", () => {
-      const w = getBiomeWeights(150, 220);
+      const w = getBiomeWeights(90, 225);
       expect(w.grass).toBeGreaterThan(0.5);
       expect(w.grass).toBeGreaterThan(w.rock);
     });
@@ -168,7 +214,7 @@ describe("terrain", () => {
 
   describe("canPlaceTree", () => {
     it("allows trees in valley grass", () => {
-      expect(canPlaceTree(150, 220)).toBe(true);
+      expect(canPlaceTree(90, 225)).toBe(true);
     });
     it("disallows trees on steep peak", () => {
       expect(canPlaceTree(0, 0)).toBe(false);
