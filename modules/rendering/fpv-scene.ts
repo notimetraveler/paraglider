@@ -6,8 +6,9 @@ import * as THREE from "three";
 import type { AircraftState } from "@/modules/flight-model/state";
 import type { CameraMode } from "@/modules/rendering/types";
 import type { LevelData } from "@/modules/world/level-types";
-import { getMountainTerrainHeight } from "@/modules/world/terrain";
+import { terrainHeightAt } from "@/modules/world/terrain";
 import { createTerrainMesh } from "./terrain-mesh";
+import { createGateMarkerMesh } from "./gate-mesh";
 import { createWindsockMesh } from "./windsock-mesh";
 import {
   createWaterMesh,
@@ -20,6 +21,7 @@ export interface FpvScene {
   camera: THREE.PerspectiveCamera;
   renderer: THREE.WebGLRenderer;
   paraglider: THREE.Group;
+  altitudeDebugLine: THREE.Line;
 }
 
 /** Alpine sky - soft blue with slight warmth */
@@ -77,7 +79,7 @@ export function createFpvScene(canvas: HTMLCanvasElement, level: LevelData): Fpv
 
   // Landing zone - subtle grass tint
   const { landingZone } = level;
-  const lzGroundY = getMountainTerrainHeight(landingZone.x, landingZone.z);
+  const lzGroundY = terrainHeightAt(landingZone.x, landingZone.z);
   const landingZoneMesh = new THREE.Mesh(
     new THREE.CircleGeometry(landingZone.radius, 48),
     new THREE.MeshLambertMaterial({
@@ -94,7 +96,7 @@ export function createFpvScene(canvas: HTMLCanvasElement, level: LevelData): Fpv
 
   // Launch platform - natural stone
   const launch = level.launch;
-  const launchGroundY = getMountainTerrainHeight(launch.x, launch.z);
+  const launchGroundY = terrainHeightAt(launch.x, launch.z);
   const launchPlatform = new THREE.Mesh(
     new THREE.CylinderGeometry(10, 13, 1.5, 20),
     new THREE.MeshLambertMaterial({ color: 0x5a5a52 })
@@ -127,44 +129,46 @@ export function createFpvScene(canvas: HTMLCanvasElement, level: LevelData): Fpv
     scene.add(thermalCylinder);
   }
 
-  // Ridge - natural rock formation
+  // Ridge - natural rock formation, grounded on terrain
   for (const r of level.ridgeLift) {
     const ridgeLen = Math.hypot(r.x2 - r.x1, r.z2 - r.z1);
     const ridgeMidX = (r.x1 + r.x2) / 2;
     const ridgeMidZ = (r.z1 + r.z2) / 2;
+    const ridgeGroundY = terrainHeightAt(ridgeMidX, ridgeMidZ);
     const ridgeAngle = Math.atan2(r.z2 - r.z1, r.x2 - r.x1);
     const ridgeWall = new THREE.Mesh(
       new THREE.BoxGeometry(ridgeLen, 10, r.width * 1.8),
       new THREE.MeshLambertMaterial({ color: 0x5c5c54 })
     );
-    ridgeWall.position.set(ridgeMidX, 5, ridgeMidZ);
+    ridgeWall.position.set(ridgeMidX, ridgeGroundY + 5, ridgeMidZ);
     ridgeWall.rotation.y = -ridgeAngle;
     scene.add(ridgeWall);
   }
 
   // Gates - readable but integrated
   for (const g of level.gates) {
-    const gateGroundY = getMountainTerrainHeight(g.x, g.z);
-    const gateRing = new THREE.Mesh(
-      new THREE.RingGeometry(g.radius - 4, g.radius, 40),
-      new THREE.MeshBasicMaterial({
-        color: 0x40a0c0,
-        transparent: true,
-        opacity: 0.65,
-        side: THREE.DoubleSide,
-        fog: false,
-      })
-    );
-    gateRing.rotation.x = -Math.PI / 2;
-    gateRing.position.set(g.x, gateGroundY + 28, g.z);
-    scene.add(gateRing);
+    scene.add(createGateMarkerMesh(g, terrainHeightAt));
   }
 
   const paraglider = createParagliderMesh();
   paraglider.visible = false;
   scene.add(paraglider);
 
-  return { scene, camera, renderer, paraglider };
+  const altitudeDebugLine = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(),
+      new THREE.Vector3(),
+    ]),
+    new THREE.LineBasicMaterial({
+      color: 0xffb347,
+      transparent: true,
+      opacity: 0.9,
+    })
+  );
+  altitudeDebugLine.visible = false;
+  scene.add(altitudeDebugLine);
+
+  return { scene, camera, renderer, paraglider, altitudeDebugLine };
 }
 
 function createParagliderMesh(): THREE.Group {
@@ -227,9 +231,17 @@ export function syncCameraFromAircraft(
   scene: FpvScene,
   state: AircraftState,
   headLook: HeadLook = { yaw: 0, pitch: 0 },
-  cameraMode: CameraMode = "fpv"
+  cameraMode: CameraMode = "fpv",
+  showAltitudeDebugLine: boolean = false
 ): void {
   const { position, heading, velocity, bank, pitchAttitude } = state;
+  const terrainY = terrainHeightAt(position.x, position.z);
+
+  const linePositions = scene.altitudeDebugLine.geometry.attributes.position;
+  linePositions.setXYZ(0, position.x, terrainY, position.z);
+  linePositions.setXYZ(1, position.x, position.y, position.z);
+  linePositions.needsUpdate = true;
+  scene.altitudeDebugLine.visible = showAltitudeDebugLine;
 
   scene.paraglider.visible = cameraMode === "tpv" || cameraMode === "top";
   if (scene.paraglider.visible) {
@@ -266,8 +278,7 @@ export function syncCameraFromAircraft(
     scene.camera.updateProjectionMatrix();
     const camY = position.y + TOP_VIEW_HEIGHT;
     scene.camera.position.set(position.x, camY, position.z);
-    const groundY = 25;
-    scene.camera.lookAt(position.x, groundY, position.z);
+    scene.camera.lookAt(position.x, terrainY, position.z);
   } else {
     scene.camera.fov = BASE_FOV;
     scene.camera.updateProjectionMatrix();

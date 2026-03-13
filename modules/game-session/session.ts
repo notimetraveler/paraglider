@@ -10,6 +10,7 @@ import {
   LANDED_ALTITUDE_THRESHOLD,
   LANDED_SPEED_THRESHOLD,
 } from "@/modules/world/config";
+import { sampleTerrainState } from "@/modules/world/terrain";
 
 /** Optional terrain height function - if not provided, uses flat ground (0) */
 export type GroundHeightFn = (x: number, z: number) => number;
@@ -34,11 +35,14 @@ export function isLanded(
   state: AircraftState,
   getGroundHeight?: GroundHeightFn
 ): boolean {
-  const groundAt = getGroundHeight
-    ? getGroundHeight(state.position.x, state.position.z)
-    : GROUND_LEVEL;
+  const terrainSample = sampleTerrainState({
+    x: state.position.x,
+    z: state.position.z,
+    worldY: state.position.y,
+    getHeight: getGroundHeight ?? (() => GROUND_LEVEL),
+  });
   const atGround =
-    state.position.y <= groundAt + LANDED_ALTITUDE_THRESHOLD;
+    terrainSample.altitudeAboveGround <= LANDED_ALTITUDE_THRESHOLD;
   const stopped = state.airspeed < LANDED_SPEED_THRESHOLD;
   return atGround && stopped;
 }

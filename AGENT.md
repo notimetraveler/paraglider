@@ -427,6 +427,7 @@ The simulator must implement the basic lifecycle of a paraglider session.
 - Flare zone hint "↓ FLARE" in HUD when altitude < 4 m
 - Post-flight summary with airtime, max altitude, distance, landing quality
 - Restart button; audio stops on pause and landing
+- Ground contact is basic physics: when the wing or pilot touches terrain, `worldY` must be clamped to terrain height and `ALT` must be exactly `0`
 
 ---
 
@@ -523,6 +524,10 @@ The simulator needs terrain suitable for paraglider gameplay.
 - Terrain must support wind/lift gameplay
 - Avoid making terrain so detailed that performance degrades too early
 - Terrain collision must be reliable
+- `ALT` is never absolute world height. It always means `worldY - terrainHeightAt(x, z)`.
+- Terrain collision, landing state, flare logic, HUD altitude, pause/debug snapshots, and scoring must all use the same shared terrain sampling source.
+- The rendered terrain mesh must use the same world coordinate orientation and height source as physics terrain. A mirrored or remapped visual terrain is a bug.
+- On terrain contact, `ALT = 0` exactly. The paraglider must never go below the terrain surface.
 
 ---
 

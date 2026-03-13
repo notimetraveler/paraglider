@@ -6,18 +6,33 @@
 import type { Environment } from "./types";
 import type { LevelData } from "./level-types";
 import { MOUNTAIN_01 } from "./levels/mountain-01";
-import { getMountainTerrainHeight } from "./terrain";
+import { terrainHeightAt } from "./terrain";
+
+const LAUNCH_CLEARANCE = 3;
 
 const LEVELS: Record<string, LevelData> = {
   "mountain-01": MOUNTAIN_01,
 };
+
+function withResolvedLaunchHeight(level: LevelData): LevelData {
+  const launchGround = terrainHeightAt(level.launch.x, level.launch.z);
+  return {
+    ...level,
+    launch: {
+      ...level.launch,
+      y: launchGround + LAUNCH_CLEARANCE,
+    },
+  };
+}
 
 /**
  * Get level data by id.
  * Returns undefined if level not found.
  */
 export function getLevel(id: string): LevelData | undefined {
-  return LEVELS[id];
+  const level = LEVELS[id];
+  if (!level) return undefined;
+  return withResolvedLaunchHeight(level);
 }
 
 /**
@@ -38,18 +53,14 @@ export function getDefaultLevel(): LevelData {
 
 /**
  * Build Environment from level data.
- * Includes wind, thermals, ridge, and terrain height for mountain level.
+ * Includes wind, thermals, ridge, and terrain height.
+ * All current levels use mountain terrain - always provide getGroundHeight.
  */
 export function environmentFromLevel(level: LevelData): Environment {
-  const getGroundHeight =
-    level.id === "mountain-01"
-      ? (x: number, z: number) => getMountainTerrainHeight(x, z)
-      : undefined;
-
   return {
     wind: level.wind,
     thermals: level.thermals,
     ridgeLift: level.ridgeLift,
-    getGroundHeight,
+    getGroundHeight: terrainHeightAt,
   };
 }

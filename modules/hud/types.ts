@@ -38,4 +38,12 @@ export interface HudTuningDebug {
   sinkTrim: number;
   bankDeg: number;
   inFlareZone: boolean;
+  worldX?: number;
+  worldY?: number;
+  worldZ?: number;
+  /** Ground height at current position (m) - for collision verification */
+  groundAt?: number;
+  /** Height above ground (m) */
+  heightAboveGround?: number;
+  collisionState?: "airborne" | "contact";
 }

@@ -121,18 +121,36 @@ describe("flight model", () => {
       expect(next.position.y).toBe(0);
       expect(next.velocity.y).toBe(0);
     });
+    it("stops at the first terrain hit instead of tunneling through a rising slope", () => {
+      const wallEnv = {
+        ...ZERO_ENVIRONMENT,
+        getGroundHeight: (_x: number, z: number) => (z < 1 ? 0 : 20),
+      };
+      const state = createInitialState({
+        position: { x: 0, y: 10, z: 0 },
+        velocity: { x: 0, y: -1.25, z: 8 },
+      });
+      const next = simulateStep(state, 1, wallEnv);
+      expect(next.velocity.x).toBe(0);
+      expect(next.velocity.y).toBe(0);
+      expect(next.velocity.z).toBe(0);
+      expect(next.position.z).toBeLessThan(2);
+      expect(next.position.y).toBeCloseTo(20, 2);
+    });
     it("landing stops completely - no sliding", () => {
       const state = createInitialState({
         position: { x: 10, y: 0.02, z: 20 },
         velocity: { x: 5, y: -2, z: 8 },
       });
       const next = simulateStep(state, 1 / 60, ZERO_ENVIRONMENT);
+      const settled = simulateStep(next, 1 / 60, ZERO_ENVIRONMENT);
       expect(next.position.y).toBe(0);
       expect(next.velocity.x).toBe(0);
       expect(next.velocity.y).toBe(0);
       expect(next.velocity.z).toBe(0);
-      expect(next.position.x).toBe(10);
-      expect(next.position.z).toBe(20);
+      expect(settled.position.x).toBe(next.position.x);
+      expect(settled.position.y).toBe(next.position.y);
+      expect(settled.position.z).toBe(next.position.z);
     });
     it("brake reduces sink rate", () => {
       const trim = createInitialState({

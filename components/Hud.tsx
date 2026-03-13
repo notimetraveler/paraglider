@@ -175,6 +175,23 @@ export function Hud({
               Sink {tuningDebug.sinkTrim.toFixed(1)} | Bank{" "}
               {tuningDebug.bankDeg.toFixed(0)}° |{" "}
               {tuningDebug.inFlareZone ? "FLARE" : "—"}
+              {tuningDebug.worldX !== undefined &&
+                tuningDebug.worldY !== undefined &&
+                tuningDebug.worldZ !== undefined && (
+                  <>
+                    {" "}
+                    | P {tuningDebug.worldX.toFixed(0)} {tuningDebug.worldY.toFixed(0)}{" "}
+                    {tuningDebug.worldZ.toFixed(0)}
+                  </>
+                )}
+              {tuningDebug.groundAt !== undefined && (
+                <>
+                  {" "}
+                  | G {tuningDebug.groundAt.toFixed(0)} ALT{" "}
+                  {tuningDebug.heightAboveGround?.toFixed(0)}
+                </>
+              )}
+              {tuningDebug.collisionState && <> | {tuningDebug.collisionState}</>}
             </span>
           )}
         </div>

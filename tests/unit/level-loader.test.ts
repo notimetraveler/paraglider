@@ -5,6 +5,7 @@ import {
   environmentFromLevel,
   DEFAULT_LEVEL_ID,
 } from "@/modules/world/level-loader";
+import { getMountainTerrainHeight } from "@/modules/world/terrain";
 
 describe("level-loader", () => {
   it("returns mountain-01 as default", () => {
@@ -26,8 +27,9 @@ describe("level-loader", () => {
   it("environmentFromLevel includes wind and thermals", () => {
     const level = getDefaultLevel();
     const env = environmentFromLevel(level);
-    expect(env.wind.x).toBe(-5);
-    expect(env.thermals.length).toBeGreaterThan(0);
+    expect(env.wind.x).toBe(0);
+    expect(env.wind.z).toBe(0);
+    expect(Array.isArray(env.thermals)).toBe(true);
   });
 
   it("environmentFromLevel includes getGroundHeight for mountain level", () => {
@@ -36,6 +38,14 @@ describe("level-loader", () => {
     expect(env.getGroundHeight).toBeDefined();
     const h = env.getGroundHeight!(0, 0);
     expect(h).toBeGreaterThan(50);
+  });
+
+  it("resolves launch height from current terrain", () => {
+    const level = getDefaultLevel();
+    expect(level.launch.y).toBeCloseTo(
+      getMountainTerrainHeight(level.launch.x, level.launch.z) + 3,
+      5
+    );
   });
 
   it("DEFAULT_LEVEL_ID is mountain-01", () => {

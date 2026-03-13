@@ -38,6 +38,17 @@ modules/
 3. **Settings**: Load from localStorage on mount (queueMicrotask); save on change.
 4. **Audio**: Vario/wind update from sim state; resume after first user input (brake/accel/steer).
 
+## Terrain source of truth
+
+- `modules/world/terrain.ts` owns the canonical terrain height query (`terrainHeightAt` / shared terrain sampling helpers).
+- Physics and UI must keep three values separate:
+  - `worldY`
+  - `terrainHeightAt(x, z)`
+  - `ALT = worldY - terrainHeightAt(x, z)`
+- Ground contact rule: when contact occurs, clamp `worldY` to terrain height and set `ALT` to exactly `0`.
+- Collision, landing state, flare logic, HUD altitude, pause/debug overlays, and scoring must all derive from the same terrain sample.
+- The rendered terrain mesh must use the same world coordinate orientation as the terrain sampler. If the mesh is mirrored or mapped differently from physics terrain, that is a correctness bug, not just a visual issue.
+
 ## Client/server boundaries
 
 - **Simulator page**: `"use client"`; all heavy logic runs in browser.

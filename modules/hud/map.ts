@@ -5,6 +5,7 @@ import {
   LANDED_ALTITUDE_THRESHOLD,
   LANDED_SPEED_THRESHOLD,
 } from "@/modules/world/config";
+import { sampleTerrainState } from "@/modules/world/terrain";
 import { getThermalLift, getRidgeLift } from "@/modules/world/lift";
 import type { Environment } from "@/modules/world/types";
 import type { HudData, HudInputDebug } from "./types";
@@ -28,6 +29,13 @@ export function mapAircraftToHudData(
   const groundAt = options?.getGroundHeight
     ? options.getGroundHeight(state.position.x, state.position.z)
     : GROUND_LEVEL;
+  const terrainSample = sampleTerrainState({
+    x: state.position.x,
+    z: state.position.z,
+    worldY: state.position.y,
+    getHeight: options?.getGroundHeight,
+  });
+  const heightAboveGround = Math.max(0, terrainSample.altitudeAboveGround);
   const atGround =
     state.position.y <= groundAt + LANDED_ALTITUDE_THRESHOLD;
   const stopped = state.airspeed < LANDED_SPEED_THRESHOLD;
@@ -48,11 +56,10 @@ export function mapAircraftToHudData(
   const dx = state.position.x - lzCenter.x;
   const dz = state.position.z - lzCenter.z;
   const distanceToLz =
-    state.position.y < 150 && state.position.y > groundAt
+    heightAboveGround < 150 && heightAboveGround > 0
       ? Math.sqrt(dx * dx + dz * dz)
       : undefined;
 
-  const heightAboveGround = state.position.y - groundAt;
   const inFlareZone =
     sessionState === "airborne" &&
     heightAboveGround <= 4 &&
@@ -60,7 +67,7 @@ export function mapAircraftToHudData(
 
   return {
     airspeed: state.airspeed,
-    altitude: state.position.y,
+    altitude: Math.max(0, heightAboveGround),
     verticalSpeed: state.verticalSpeed,
     heading: state.heading,
     state: sessionState,

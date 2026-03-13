@@ -93,6 +93,33 @@ describe("hud map", () => {
       expect(hud.windZ).toBe(0);
       expect(hud.thermalLift).toBe(0);
     });
+    it("reports altitude above terrain when ground height is provided", () => {
+      const state = createInitialAircraftState({
+        position: { x: 80, y: 132, z: 140 },
+      });
+      const hud = mapAircraftToHudData(
+        state,
+        ZERO_ENVIRONMENT,
+        {
+          getGroundHeight: () => 118,
+        }
+      );
+      expect(hud.altitude).toBe(14);
+    });
+    it("uses terrain directly under the glider for ALT", () => {
+      const state = createInitialAircraftState({
+        position: { x: 0, y: 100, z: 0 },
+        heading: 0,
+      });
+      const hud = mapAircraftToHudData(
+        state,
+        ZERO_ENVIRONMENT,
+        {
+          getGroundHeight: (_x, z) => (z >= 20 ? 90 : 20),
+        }
+      );
+      expect(hud.altitude).toBe(80);
+    });
     it("returns airborne when above ground", () => {
       const state = createInitialAircraftState({
         position: { x: 0, y: 100, z: 0 },
@@ -117,11 +144,23 @@ describe("hud map", () => {
       expect(hud.distanceToLz).toBeDefined();
       expect(hud.distanceToLz).toBeCloseTo(Math.sqrt(50 * 50 + 30 * 30), 0);
     });
-    it("omits distanceToLz when altitude >= 150 m", () => {
+    it("includes distanceToLz when world height is high but ALT above terrain is low", () => {
       const state = createInitialAircraftState({
         position: { x: 50, y: 200, z: 30 },
       });
-      const hud = mapAircraftToHudData(state, ZERO_ENVIRONMENT);
+      const hud = mapAircraftToHudData(state, ZERO_ENVIRONMENT, {
+        getGroundHeight: () => 150,
+      });
+      expect(hud.distanceToLz).toBeDefined();
+      expect(hud.distanceToLz).toBeCloseTo(Math.sqrt(50 * 50 + 30 * 30), 0);
+    });
+    it("omits distanceToLz when ALT above terrain is >= 150 m", () => {
+      const state = createInitialAircraftState({
+        position: { x: 50, y: 200, z: 30 },
+      });
+      const hud = mapAircraftToHudData(state, ZERO_ENVIRONMENT, {
+        getGroundHeight: () => 40,
+      });
       expect(hud.distanceToLz).toBeUndefined();
     });
   });

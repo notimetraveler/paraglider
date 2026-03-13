@@ -1,6 +1,12 @@
 import type { AircraftState } from "./state";
-import { GROUND_LEVEL, DEFAULT_ENVIRONMENT } from "@/modules/world/config";
+import {
+  GROUND_LEVEL,
+  DEFAULT_ENVIRONMENT,
+  LANDED_ALTITUDE_THRESHOLD,
+  LANDED_SPEED_THRESHOLD,
+} from "@/modules/world/config";
 import type { Environment } from "@/modules/world/types";
+import { sampleTerrainState } from "@/modules/world/terrain";
 import { getThermalLift, getRidgeLift } from "@/modules/world/lift";
 import {
   SIM_DT,
@@ -27,6 +33,92 @@ import {
 } from "./tuning";
 
 const G = 9.81;
+const COLLISION_SWEEP_STEP_M = 1;
+const COLLISION_BINARY_SEARCH_STEPS = 8;
+
+interface TerrainCollisionHit {
+  x: number;
+  y: number;
+  z: number;
+}
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+function getGroundHeightAt(
+  x: number,
+  z: number,
+  getGroundHeight?: (x: number, z: number) => number
+): number {
+  return getGroundHeight ? getGroundHeight(x, z) : GROUND_LEVEL;
+}
+
+function resolveTerrainCollision(
+  start: { x: number; y: number; z: number },
+  end: { x: number; y: number; z: number },
+  getGroundHeight?: (x: number, z: number) => number
+): TerrainCollisionHit | undefined {
+  if (!getGroundHeight) return undefined;
+
+  const segmentLength = Math.hypot(
+    end.x - start.x,
+    end.y - start.y,
+    end.z - start.z
+  );
+  const steps = Math.max(1, Math.ceil(segmentLength / COLLISION_SWEEP_STEP_M));
+
+  let safeT = 0;
+  for (let step = 1; step <= steps; step++) {
+    const t = step / steps;
+    const sampleX = lerp(start.x, end.x, t);
+    const sampleY = lerp(start.y, end.y, t);
+    const sampleZ = lerp(start.z, end.z, t);
+    const sample = sampleTerrainState({
+      x: sampleX,
+      z: sampleZ,
+      worldY: sampleY,
+      getHeight: getGroundHeight,
+    });
+
+    if (sample.isTouchingTerrain) {
+      let low = safeT;
+      let high = t;
+
+      for (let i = 0; i < COLLISION_BINARY_SEARCH_STEPS; i++) {
+        const mid = (low + high) / 2;
+        const midX = lerp(start.x, end.x, mid);
+        const midY = lerp(start.y, end.y, mid);
+        const midZ = lerp(start.z, end.z, mid);
+        const midSample = sampleTerrainState({
+          x: midX,
+          z: midZ,
+          worldY: midY,
+          getHeight: getGroundHeight,
+        });
+
+        if (midSample.isTouchingTerrain) {
+          high = mid;
+        } else {
+          low = mid;
+        }
+      }
+
+      const hitT = high;
+      const hitX = lerp(start.x, end.x, hitT);
+      const hitZ = lerp(start.z, end.z, hitT);
+      return {
+        x: hitX,
+        z: hitZ,
+        y: getGroundHeightAt(hitX, hitZ, getGroundHeight),
+      };
+    }
+
+    safeT = t;
+  }
+
+  return undefined;
+}
 
 /**
  * Advance flight simulation by one fixed timestep.
@@ -38,6 +130,31 @@ export function simulateStep(
   env: Environment = DEFAULT_ENVIRONMENT
 ): AircraftState {
   const { position, velocity, heading, inputs } = state;
+  const currentGroundAt = getGroundHeightAt(
+    position.x,
+    position.z,
+    env.getGroundHeight
+  );
+  const currentTerrainSample = sampleTerrainState({
+    x: position.x,
+    z: position.z,
+    worldY: position.y,
+    getHeight: env.getGroundHeight,
+  });
+  const currentAltitudeAboveGround = currentTerrainSample.altitudeAboveGround;
+
+  if (
+    currentAltitudeAboveGround <= LANDED_ALTITUDE_THRESHOLD &&
+    state.airspeed < LANDED_SPEED_THRESHOLD
+  ) {
+    return {
+      ...state,
+      airspeed: 0,
+      verticalSpeed: 0,
+      position: { ...position, y: currentGroundAt },
+      velocity: { x: 0, y: 0, z: 0 },
+    };
+  }
 
   const steerNet = inputs.steerLeft - inputs.steerRight;
 
@@ -86,17 +203,13 @@ export function simulateStep(
   }
 
   // Flare: near ground, braking reduces sink (softer touchdown)
-  const groundHere = env.getGroundHeight
-    ? env.getGroundHeight(position.x, position.z)
-    : GROUND_LEVEL;
-  const heightAboveGround = position.y - groundHere;
   if (
-    heightAboveGround <= FLARE_ALTITUDE &&
-    heightAboveGround > 0 &&
+    currentAltitudeAboveGround <= FLARE_ALTITUDE &&
+    currentAltitudeAboveGround > 0 &&
     inputs.brake >= FLARE_BRAKE_THRESHOLD
   ) {
     const flareEffect = (inputs.brake - FLARE_BRAKE_THRESHOLD) / (1 - FLARE_BRAKE_THRESHOLD);
-    const altitudeFactor = 1 - heightAboveGround / FLARE_ALTITUDE;
+    const altitudeFactor = 1 - currentAltitudeAboveGround / FLARE_ALTITUDE;
     sinkRate -= FLARE_SINK_REDUCTION * flareEffect * altitudeFactor;
   }
   sinkRate = Math.max(0.15, sinkRate);
@@ -113,10 +226,6 @@ export function simulateStep(
   const ridgeLift = getRidgeLift(nextX, nextZ, env.ridgeLift, env.wind);
   const targetVelY = -sinkRate + thermalLift + ridgeLift;
 
-  const groundAt = env.getGroundHeight
-    ? env.getGroundHeight(nextX, nextZ)
-    : GROUND_LEVEL;
-
   const blend = Math.min(1, dt * VERTICAL_SPEED_BLEND_RATE);
   let newVelY = velocity.y + (targetVelY - velocity.y) * blend;
   let newY = position.y + newVelY * dt;
@@ -126,14 +235,39 @@ export function simulateStep(
   let newVelZ = airVelZ + env.wind.z;
 
   let touchdownSink: number | undefined;
-  if (newY < groundAt) {
+  const collisionHit = resolveTerrainCollision(
+    position,
+    { x: newX, y: newY, z: newZ },
+    env.getGroundHeight
+  );
+
+  if (collisionHit) {
     touchdownSink = Math.max(0, -newVelY);
-    newY = groundAt;
+    newX = collisionHit.x;
+    newY = collisionHit.y;
+    newZ = collisionHit.z;
     newVelY = 0;
     newVelX = 0;
     newVelZ = 0;
-    newX = position.x;
-    newZ = position.z;
+  } else {
+    const nextTerrainSample = sampleTerrainState({
+      x: newX,
+      z: newZ,
+      worldY: newY,
+      getHeight: env.getGroundHeight,
+    });
+    const nextGroundAt = nextTerrainSample.terrainHeight;
+    const nextAltitudeAboveGround = nextTerrainSample.altitudeAboveGround;
+
+    if (nextAltitudeAboveGround <= 0) {
+      touchdownSink = Math.max(0, -newVelY);
+      newY = nextGroundAt;
+      newVelY = 0;
+      newVelX = 0;
+      newVelZ = 0;
+      newX = nextX;
+      newZ = nextZ;
+    }
   }
 
   return {

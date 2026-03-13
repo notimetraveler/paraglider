@@ -161,6 +161,14 @@ Do not substitute:
 - prefer deterministic test mode
 - support seeded randomness for turbulence/lift behavior in tests
 
+### Terrain / altitude invariants
+- `world position` and `terrain height` are separate values. Do not treat `position.y` as altitude.
+- `ALT` always means **altitude above ground**: `ALT = worldY - terrainHeightAt(x, z)`.
+- Terrain collision, landing detection, flare logic, HUD altitude, pause/debug readouts, and max-altitude scoring must all derive from the same terrain height source.
+- When the paraglider touches terrain, clamp `worldY` exactly to `terrainHeightAt(x, z)` and set `ALT` to exactly `0`.
+- The glider must never penetrate the terrain surface. Use sweep/substep collision checks when needed to prevent tunneling.
+- Rendering terrain is not allowed to use a different height field, axis direction, or coordinate mapping than the collision terrain. Visual terrain and physical terrain must stay aligned.
+
 ---
 
 ## Environmental Systems

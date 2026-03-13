@@ -1,0 +1,25 @@
+---
+description: Keep terrain collision, ALT, and rendered terrain aligned
+alwaysApply: true
+---
+
+# Terrain Altitude Invariants
+
+- Treat `worldY`, `terrainHeightAt(x, z)`, and `ALT` as separate values.
+- `ALT` always means altitude above ground: `ALT = worldY - terrainHeightAt(x, z)`.
+- Never use `position.y` directly as HUD altitude, flare height, landing height, or scoring altitude.
+- Terrain collision, landing detection, HUD altitude, pause/debug snapshots, and scoring must all use the same shared terrain height source.
+- On terrain contact, clamp `worldY` exactly to `terrainHeightAt(x, z)` and set `ALT` to exactly `0`.
+- Prevent terrain penetration with sweep or substep collision checks when a single frame could tunnel through rising ground.
+- Rendered terrain must use the same coordinate orientation and height source as collision terrain. A mirrored or remapped terrain mesh is a bug.
+
+```ts
+// ❌ Wrong
+const altitude = state.position.y;
+const hitGround = state.position.y <= 0;
+
+// ✅ Correct
+const terrainHeight = terrainHeightAt(state.position.x, state.position.z);
+const altitude = state.position.y - terrainHeight;
+const hitGround = altitude <= 0;
+```

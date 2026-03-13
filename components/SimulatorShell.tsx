@@ -31,6 +31,7 @@ import {
   getDefaultLevel,
   environmentFromLevel,
 } from "@/modules/world/level-loader";
+import { sampleTerrainState, terrainHeightAt } from "@/modules/world/terrain";
 import { checkGateProgress } from "@/modules/world/gates";
 import {
   formatAirtime,
@@ -58,6 +59,10 @@ import {
 } from "@/modules/settings";
 import { useInput } from "./InputManager";
 import { Hud } from "./Hud";
+import {
+  PauseDebugPanel,
+  type PauseDebugSnapshot,
+} from "./PauseDebugPanel";
 import { SettingsPanel } from "./SettingsPanel";
 
 const SIM_DT = 1 / 60;
@@ -78,10 +83,49 @@ function useInitialDebugMode(): boolean {
   return new URLSearchParams(window.location.search).get("debug") === "1";
 }
 
+function useThermalsDisabled(): boolean {
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).get("thermals") === "0";
+}
+
+function buildPauseDebugSnapshot(
+  state: AircraftState,
+  getHeight: (x: number, z: number) => number,
+  flightState: FlightState,
+  cameraMode: "fpv" | "tpv" | "top"
+): PauseDebugSnapshot {
+  const terrainSample = sampleTerrainState({
+    x: state.position.x,
+    z: state.position.z,
+    worldY: state.position.y,
+    getHeight,
+  });
+
+  return {
+    worldX: state.position.x,
+    worldY: state.position.y,
+    worldZ: state.position.z,
+    terrainHeight: terrainSample.terrainHeight,
+    altitudeAboveGround: Math.max(0, terrainSample.altitudeAboveGround),
+    collisionState: terrainSample.altitudeAboveGround <= 0 ? "contact" : "airborne",
+    airspeed: state.airspeed,
+    verticalSpeed: state.verticalSpeed,
+    flightState,
+    cameraMode,
+  };
+}
+
 export function SimulatorShell() {
   const level = useMemo(() => getDefaultLevel(), []);
-  const env = useMemo(() => environmentFromLevel(level), [level]);
-  const getGroundHeight = env.getGroundHeight;
+  const thermalsDisabled = useThermalsDisabled();
+  const env = useMemo(() => {
+    const base = environmentFromLevel(level);
+    if (thermalsDisabled) {
+      return { ...base, thermals: [] };
+    }
+    return base;
+  }, [level, thermalsDisabled]);
+  const groundHeightAt = env.getGroundHeight ?? terrainHeightAt;
 
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<FpvScene | null>(null);
@@ -130,7 +174,7 @@ export function SimulatorShell() {
 
   const [hudData, setHudData] = useState<HudData>(() =>
     mapAircraftToHudData(createLaunchState(level.launch), env, {
-      getGroundHeight,
+      getGroundHeight: groundHeightAt,
       landingZone: level.landingZone,
       gateProgress: { passed: 0, total: level.gates.length },
     })
@@ -141,6 +185,15 @@ export function SimulatorShell() {
   const [flightState, setFlightState] = useState<FlightState>("airborne");
   const [isPaused, setIsPaused] = useState(false);
   const [cameraMode, setCameraMode] = useState<"fpv" | "tpv" | "top">("fpv");
+  const [pauseDebugSnapshot, setPauseDebugSnapshot] = useState<PauseDebugSnapshot>(
+    () =>
+      buildPauseDebugSnapshot(
+        createLaunchState(level.launch),
+        groundHeightAt,
+        "airborne",
+        "fpv"
+      )
+  );
   const isPausedRef = useRef(false);
   const cameraModeRef = useRef<"fpv" | "tpv" | "top">("fpv");
   useEffect(() => {
@@ -156,25 +209,38 @@ export function SimulatorShell() {
   const maxDistanceRef = useRef(0);
   const [scoreSummary, setScoreSummary] = useState<SessionStats | null>(null);
 
+  const resetSimulationState = useMemo(
+    () => () => {
+      const initialState = createLaunchState(level.launch);
+      stateRef.current = initialState;
+      brakeLevelRef.current = 0;
+      accelLevelRef.current = 0;
+      steerLeftLevelRef.current = 0;
+      steerRightLevelRef.current = 0;
+      gatePassedRef.current = 0;
+      headLookRef.current = { yaw: 0, pitch: 0 };
+      launchTimeRef.current = performance.now();
+      maxAltitudeRef.current = 0;
+      maxDistanceRef.current = 0;
+      setIsPaused(false);
+      setFlightState("airborne");
+      setScoreSummary(null);
+      setHudData(
+        mapAircraftToHudData(initialState, env, {
+          getGroundHeight: groundHeightAt,
+          landingZone: level.landingZone,
+          gateProgress: { passed: 0, total: level.gates.length },
+        })
+      );
+      setPauseDebugSnapshot(
+        buildPauseDebugSnapshot(initialState, groundHeightAt, "airborne", cameraModeRef.current)
+      );
+    },
+    [env, groundHeightAt, level]
+  );
+
   const handleRestart = () => {
-    stateRef.current = createLaunchState(level.launch);
-    brakeLevelRef.current = 0;
-    accelLevelRef.current = 0;
-    steerLeftLevelRef.current = 0;
-    steerRightLevelRef.current = 0;
-    gatePassedRef.current = 0;
-    launchTimeRef.current = performance.now();
-    maxAltitudeRef.current = 0;
-    maxDistanceRef.current = 0;
-    setHudData(
-      mapAircraftToHudData(createLaunchState(level.launch), env, {
-        getGroundHeight,
-        landingZone: level.landingZone,
-        gateProgress: { passed: 0, total: level.gates.length },
-      })
-    );
-    setFlightState("airborne");
-    setScoreSummary(null);
+    resetSimulationState();
   };
 
   useEffect(() => {
@@ -300,12 +366,16 @@ export function SimulatorShell() {
       inputsCache.steerRight = steerRightLevel;
       inputsCache.brake = brakeLevel;
       inputsCache.acceleratedFlight = accelLevel;
+      const envWithTerrain = {
+        ...env,
+        getGroundHeight: groundHeightAt,
+      };
       const nextState = isPausedRef.current
         ? currentState
         : simulateStep(
             { ...currentState, inputs: inputsCache },
             SIM_DT,
-            env
+            envWithTerrain
           );
       stateRef.current = nextState;
 
@@ -313,7 +383,8 @@ export function SimulatorShell() {
         scene,
         nextState,
         headLookRef.current,
-        cameraModeRef.current
+        cameraModeRef.current,
+        settingsRef.current.debugMode || isPausedRef.current
       );
       scene.renderer.render(scene.scene, scene.camera);
 
@@ -347,16 +418,23 @@ export function SimulatorShell() {
         lastWind.volume = s.windVolume;
         wind.setConfig(lastWind);
       }
-      const fs = deriveFlightState(nextState, getGroundHeight);
+      const fs = deriveFlightState(nextState, groundHeightAt);
       if (isPausedRef.current) {
         vario.stop();
         wind.stop();
       } else if (fs === "airborne") {
         vario.update(nextState.verticalSpeed);
         wind.update(nextState.airspeed);
+        const terrainSample = sampleTerrainState({
+          x: nextState.position.x,
+          z: nextState.position.z,
+          worldY: nextState.position.y,
+          getHeight: groundHeightAt,
+        });
+        const heightAboveGround = Math.max(0, terrainSample.altitudeAboveGround);
         maxAltitudeRef.current = Math.max(
           maxAltitudeRef.current,
-          nextState.position.y
+          heightAboveGround
         );
         const dist = Math.sqrt(
           (nextState.position.x - level.launch.x) ** 2 +
@@ -375,7 +453,7 @@ export function SimulatorShell() {
       );
       gatePassedRef.current = gateProgress.passed;
 
-      if (didJustLand(currentState, nextState, getGroundHeight)) {
+      if (didJustLand(currentState, nextState, groundHeightAt)) {
         const airtime = (performance.now() - launchTimeRef.current) / 1000;
         const sink = nextState.touchdownSink ?? 2;
         const quality = classifyLandingQuality(sink);
@@ -396,7 +474,7 @@ export function SimulatorShell() {
         lastHudUpdateRef.current = now;
         setHudData(
           mapAircraftToHudData(nextState, env, {
-            getGroundHeight,
+            getGroundHeight: groundHeightAt,
             landingZone: level.landingZone,
             gateProgress: {
               passed: gateProgress.passed,
@@ -405,6 +483,9 @@ export function SimulatorShell() {
           })
         );
         setFlightState(fs);
+        setPauseDebugSnapshot(
+          buildPauseDebugSnapshot(nextState, groundHeightAt, fs, cameraModeRef.current)
+        );
         setHudInputDebug(
           settingsRef.current.debugMode
             ? mapInputsToDebug({
@@ -437,24 +518,27 @@ export function SimulatorShell() {
         );
         setHudTuningDebug(
           settingsRef.current.debugMode
-            ? {
-                sinkTrim: SINK_AT_TRIM,
-                bankDeg: (nextState.bank * 180) / Math.PI,
-                inFlareZone: Boolean(
-                  getGroundHeight &&
-                    nextState.position.y -
-                      getGroundHeight(
-                        nextState.position.x,
-                        nextState.position.z
-                      ) <=
-                      FLARE_ALTITUDE &&
-                    nextState.position.y >
-                      getGroundHeight(
-                        nextState.position.x,
-                        nextState.position.z
-                      )
-                ),
-              }
+            ? (() => {
+                const terrainSample = sampleTerrainState({
+                  x: nextState.position.x,
+                  z: nextState.position.z,
+                  worldY: nextState.position.y,
+                  getHeight: groundHeightAt,
+                });
+                const g = terrainSample.terrainHeight;
+                const h = Math.max(0, terrainSample.altitudeAboveGround);
+                return {
+                  sinkTrim: SINK_AT_TRIM,
+                  bankDeg: (nextState.bank * 180) / Math.PI,
+                  inFlareZone: h <= FLARE_ALTITUDE && h > 0,
+                  worldX: nextState.position.x,
+                  worldY: nextState.position.y,
+                  worldZ: nextState.position.z,
+                  groundAt: g,
+                  heightAboveGround: h,
+                  collisionState: h === 0 ? "contact" : "airborne",
+                };
+              })()
             : null
         );
       }
@@ -481,7 +565,7 @@ export function SimulatorShell() {
       canvas.remove();
       sceneRef.current = null;
     };
-  }, [level, env, getGroundHeight]);
+  }, [level, env, groundHeightAt]);
 
   return (
     <div ref={containerRef} className="relative h-full w-full min-h-screen">
@@ -540,10 +624,11 @@ export function SimulatorShell() {
       </div>
       {isPaused && (
         <div
-          className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/40 backdrop-blur-[2px]"
+          className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/45 px-4 backdrop-blur-[2px]"
           data-testid="pause-overlay"
         >
           <p className="font-mono text-lg font-medium text-white/95">Pauze</p>
+          <PauseDebugPanel snapshot={pauseDebugSnapshot} />
           <div className="flex flex-col items-center gap-2">
             <button
               type="button"
