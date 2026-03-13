@@ -10,7 +10,7 @@ import {
 
 describe("world layout", () => {
   it("ridge is downwind of launch (wind pushes toward ridge)", () => {
-    expect(DEFAULT_WIND.x).toBeLessThan(0);
+    expect(DEFAULT_WIND.x).toBeGreaterThan(0);
     expect(DEFAULT_RIDGE.x1).toBeGreaterThan(LAUNCH_CONFIG.x);
   });
 

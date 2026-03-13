@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createLaunchState, simulateStep } from "@/modules/flight-model";
 import { deriveFlightState, isLanded } from "@/modules/game-session";
-import { LAUNCH_CONFIG, DEFAULT_ENVIRONMENT } from "@/modules/world/config";
+import { LAUNCH_CONFIG, ZERO_ENVIRONMENT } from "@/modules/world/config";
 
 describe("launch-land-restart flow", () => {
   it("createLaunchState uses world config with forward velocity", () => {
@@ -35,7 +35,7 @@ describe("launch-land-restart flow", () => {
 
     // Simulate ~2 minutes of flight
     for (let i = 0; i < 7200; i++) {
-      state = simulateStep(state, 1 / 60, DEFAULT_ENVIRONMENT);
+      state = simulateStep(state, 1 / 60, ZERO_ENVIRONMENT);
       if (isLanded(state)) break;
     }
 

@@ -7,8 +7,8 @@ import type { WindVector } from "./types";
 
 /**
  * Get windsock heading (radians) - direction the sock points.
- * Windsock points downwind: opposite to wind direction.
- * Wind from west (negative x) -> sock points east (positive x).
+ * Windsock points downwind: where the wind blows TO.
+ * Wind (5, 0) = air moves east -> sock points east.
  * Returns angle in radians, 0 = +Z (north), PI/2 = +X (east).
  */
 export function getWindsockHeading(wind: WindVector): number {
@@ -16,9 +16,5 @@ export function getWindsockHeading(wind: WindVector): number {
   if (speed < 0.1) {
     return 0; // No wind -> default north
   }
-  // Wind blows FROM (wind.x, wind.z) direction
-  // Sock points DOWNwind = opposite direction
-  const downwindX = -wind.x;
-  const downwindZ = -wind.z;
-  return Math.atan2(downwindX, downwindZ);
+  return Math.atan2(wind.x, wind.z);
 }

@@ -47,9 +47,9 @@ export const LANDED_ALTITUDE_THRESHOLD = 0.5;
 /** Speed threshold (m/s) - below this when on ground = landed */
 export const LANDED_SPEED_THRESHOLD = 0.5;
 
-/** Default wind - from west (negative X) at 5 m/s - drift east, ridge on drift path */
+/** Default wind - from west at 5 m/s - drift east (positive X), ridge on drift path */
 export const DEFAULT_WIND: WindVector = {
-  x: -5,
+  x: 5,
   z: 0,
 };
 
