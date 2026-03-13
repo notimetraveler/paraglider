@@ -8,6 +8,7 @@ import type { CameraMode } from "@/modules/rendering/types";
 import type { LevelData } from "@/modules/world/level-types";
 import type { WindVector } from "@/modules/world/types";
 import { terrainHeightAt } from "@/modules/world/terrain";
+import { SINK_AT_TRIM, TRIM_SPEED } from "@/modules/flight-model/tuning";
 import { createTerrainMesh } from "./terrain-mesh";
 import { createWindsockMesh } from "./windsock-mesh";
 import { addWorldDecorToScene } from "./scene-decor";
@@ -476,8 +477,9 @@ export interface HeadLook {
   pitch: number;
 }
 
-const PITCH_MIN = (-25 * Math.PI) / 180;
 const PITCH_MAX = (15 * Math.PI) / 180;
+/** Extra nose-down (rad) so horizon sits near vertical center in FPV */
+const HORIZON_CENTER_OFFSET = (10 * Math.PI) / 180;
 const EYE_HEIGHT = 1.5;
 const TPV_DISTANCE = 18;
 const TPV_HEIGHT = 6;
@@ -519,8 +521,11 @@ export function syncCameraFromAircraft(
     scene.camera.updateProjectionMatrix();
     const horizontalSpeed = Math.sqrt(velocity.x ** 2 + velocity.z ** 2) || 1;
     const basePitch = Math.atan2(-velocity.y, horizontalSpeed);
-    const clampedPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, basePitch));
-    const pitch = clampedPitch + pitchAttitude + headLook.pitch;
+    const trimPitchOffset = Math.atan2(SINK_AT_TRIM, TRIM_SPEED);
+    const pitchRelativeToTrim = basePitch - trimPitchOffset;
+    const clampedPitch = Math.max(0, Math.min(PITCH_MAX, pitchRelativeToTrim));
+    const pitch =
+      clampedPitch + trimPitchOffset + HORIZON_CENTER_OFFSET + pitchAttitude + headLook.pitch;
     const effectiveHeading = heading + headLook.yaw;
     const lookDistance = 100;
     const forwardX = Math.sin(effectiveHeading);
